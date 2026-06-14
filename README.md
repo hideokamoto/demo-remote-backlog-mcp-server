@@ -1,92 +1,92 @@
-# Model Context Protocol (MCP) Server + Backlog OAuth
+# Model Context Protocol (MCP) サーバー + Backlog OAuth
 
-This is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) server that supports remote MCP connections, with [Backlog (Nulab)](https://developer.nulab.com/docs/backlog/) OAuth 2.0 built-in.
+これは、リモート MCP 接続に対応した [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) サーバーで、[Backlog (Nulab)](https://developer.nulab.com/docs/backlog/) の OAuth 2.0 認証を組み込んでいます。
 
-You can deploy it to your own Cloudflare account, and after you register your own Backlog OAuth application, you'll have a fully functional remote MCP server that you can build off. Users will be able to connect to your MCP server by signing in with their Backlog account.
+ご自身の Cloudflare アカウントにデプロイでき、ご自身の Backlog OAuth アプリケーションを登録すれば、すぐに拡張可能なリモート MCP サーバーが手に入ります。ユーザーは Backlog アカウントでサインインして、この MCP サーバーに接続できます。
 
-The MCP server (powered by [Cloudflare Workers](https://developers.cloudflare.com/workers/)):
+この MCP サーバー（[Cloudflare Workers](https://developers.cloudflare.com/workers/) 上で動作）は、次の役割を担います。
 
-- Acts as OAuth _Server_ to your MCP clients
-- Acts as OAuth _Client_ to your _real_ OAuth server (in this case, Backlog)
+- MCP クライアントに対しては OAuth **サーバー**として動作
+- 本物の OAuth サーバー（ここでは Backlog）に対しては OAuth **クライアント**として動作
 
 > [!WARNING]
-> This is a demo template designed to help you get started quickly. While we have implemented several security controls, **you must implement all preventive and defense-in-depth security measures before deploying to production**. Please review our comprehensive security guide: [Securing MCP Servers](https://github.com/cloudflare/agents/blob/main/docs/securing-mcp-servers.md)
+> これは、すぐに使い始められるよう設計されたデモ用テンプレートです。いくつかのセキュリティ対策は実装済みですが、**本番環境にデプロイする前に、予防的かつ多層的なセキュリティ対策をすべて自身で実装する必要があります**。包括的なセキュリティガイドをご確認ください: [Securing MCP Servers](https://github.com/cloudflare/agents/blob/main/docs/securing-mcp-servers.md)
 
-## How Backlog OAuth differs
+## Backlog OAuth の特徴
 
-Backlog is **per-space**: each space has its own host (e.g. `yourspace.backlog.com`, `yourspace.backlog.jp`, `yourspace.backlogtool.com`) and OAuth applications are registered within a single space. This server is therefore **single-space**: you configure the target space host via the `BACKLOG_HOST` variable, and the `BACKLOG_CLIENT_ID` / `BACKLOG_CLIENT_SECRET` belong to that space.
+Backlog は **スペース単位** です。各スペースは固有のホスト（例: `yourspace.backlog.com`、`yourspace.backlog.jp`、`yourspace.backlogtool.com`）を持ち、OAuth アプリケーションは単一のスペース内に登録されます。そのため、このサーバーは **単一スペース** 構成です。対象スペースのホストを `BACKLOG_HOST` 変数で設定し、`BACKLOG_CLIENT_ID` / `BACKLOG_CLIENT_SECRET` はそのスペースに紐づきます。
 
-Backlog access tokens expire after 1 hour. This server stores the refresh token and **automatically refreshes** the access token when it expires (see `getValidAccessToken()` in `src/index.ts`).
+Backlog のアクセストークンは 1 時間で失効します。このサーバーはリフレッシュトークンを保存し、アクセストークンが失効した際に **自動的に更新（リフレッシュ）** します（`src/index.ts` の `getValidAccessToken()` を参照）。
 
-See the [Backlog Authentication & Authorization docs](https://developer.nulab.com/docs/backlog/auth/) for details.
+詳細は [Backlog の認証・認可ドキュメント](https://developer.nulab.com/ja/docs/backlog/auth/) を参照してください。
 
-## Getting Started
+## はじめに
 
-Clone the repo directly & install dependencies: `npm install`.
+リポジトリをクローンし、依存関係をインストールします: `npm install`
 
-### Register a Backlog OAuth Application
+### Backlog OAuth アプリケーションの登録
 
-In your Backlog space, go to **Space settings → Integrations → Developer (API)** and register a new OAuth 2.0 application to obtain your **Client ID** and **Client Secret**.
+Backlog スペースの **スペース設定 → 連携 → 開発者向け（API）** から、新しい OAuth 2.0 アプリケーションを登録し、**クライアント ID** と **クライアントシークレット** を取得します。
 
-- Redirect URI (production): `https://<your-worker-name>.<your-subdomain>.workers.dev/callback`
-- Redirect URI (local development): `http://localhost:8788/callback`
+- リダイレクト URI（本番）: `https://<your-worker-name>.<your-subdomain>.workers.dev/callback`
+- リダイレクト URI（ローカル開発）: `http://localhost:8788/callback`
 
-### For Production
+### 本番環境向け
 
-Set your target space host in `wrangler.jsonc` under `vars`:
+対象スペースのホストを `wrangler.jsonc` の `vars` に設定します。
 
 ```jsonc
 "vars": { "BACKLOG_HOST": "yourspace.backlog.com" }
 ```
 
-Set the secrets via Wrangler:
+シークレットを Wrangler で設定します。
 
 ```bash
 wrangler secret put BACKLOG_CLIENT_ID
 wrangler secret put BACKLOG_CLIENT_SECRET
-wrangler secret put COOKIE_ENCRYPTION_KEY # add any random string here e.g. openssl rand -hex 32
+wrangler secret put COOKIE_ENCRYPTION_KEY # 任意のランダム文字列。例: openssl rand -hex 32
 ```
 
 > [!IMPORTANT]
-> When you create the first secret, Wrangler will ask if you want to create a new Worker. Submit "Y" to create a new Worker and save the secret.
+> 最初のシークレットを作成すると、Wrangler が新しい Worker を作成するか尋ねてきます。「Y」を入力して Worker を作成し、シークレットを保存してください。
 
-#### Set up a KV namespace
+#### KV ネームスペースのセットアップ
 
-- Create the KV namespace:
+- KV ネームスペースを作成します:
   `wrangler kv namespace create "OAUTH_KV"`
-- Update the Wrangler file with the KV ID
+- 出力された KV ID を Wrangler の設定ファイルに反映します。
 
-#### Deploy & Test
+#### デプロイとテスト
 
-Deploy the MCP server to make it available on your workers.dev domain:
+MCP サーバーをデプロイし、workers.dev ドメインで利用できるようにします。
 
 ```bash
 wrangler deploy
 ```
 
-Test the remote server using [Inspector](https://modelcontextprotocol.io/docs/tools/inspector):
+[Inspector](https://modelcontextprotocol.io/docs/tools/inspector) を使ってリモートサーバーをテストします。
 
 ```bash
 npx @modelcontextprotocol/inspector@latest
 ```
 
-Enter `https://<your-worker-name>.<your-subdomain>.workers.dev/sse` and hit connect. Once you go through the Backlog authentication flow, you'll see the Tools working.
+`https://<your-worker-name>.<your-subdomain>.workers.dev/sse` を入力して接続します。Backlog の認証フローを完了すると、ツールが動作するのを確認できます。
 
-You now have a remote MCP server deployed!
+これでリモート MCP サーバーがデプロイされました！
 
-### Tools
+### ツール
 
-This MCP server uses Backlog OAuth for authentication. Authenticated users can call:
+この MCP サーバーは Backlog OAuth で認証を行います。認証済みのユーザーは次のツールを呼び出せます。
 
-- **`getMyself`** — returns the authenticated user's own information from Backlog (`GET /api/v2/users/myself`).
+- **`getMyself`** — 認証済みユーザー自身の情報を Backlog から取得します（`GET /api/v2/users/myself`）。
 
-You can extend `src/index.ts` with more Backlog tools using the [`backlog-js`](https://github.com/nulab/backlog-js) client and the access token returned by `getValidAccessToken()`.
+[`backlog-js`](https://github.com/nulab/backlog-js) クライアントと `getValidAccessToken()` が返すアクセストークンを使えば、`src/index.ts` を拡張して Backlog のツールを追加できます。
 
-### Access the remote MCP server from Claude Desktop
+### Claude Desktop からリモート MCP サーバーへ接続する
 
-Open Claude Desktop and navigate to Settings -> Developer -> Edit Config. This opens the configuration file that controls which MCP servers Claude can access.
+Claude Desktop を開き、Settings -> Developer -> Edit Config に移動します。これで、Claude がアクセスできる MCP サーバーを制御する設定ファイルが開きます。
 
-Replace the content with the following configuration. Once you restart Claude Desktop, a browser window will open showing your OAuth login page. Complete the Backlog authentication flow to grant Claude access to your MCP server. After you grant access, the tools will become available for you to use.
+内容を以下の設定に置き換えます。Claude Desktop を再起動すると、OAuth ログインページを表示するブラウザウィンドウが開きます。Backlog の認証フローを完了して、Claude に MCP サーバーへのアクセスを許可してください。許可すると、ツールが利用可能になります。
 
 ```json
 {
@@ -102,64 +102,64 @@ Replace the content with the following configuration. Once you restart Claude De
 }
 ```
 
-Once the Tools (under 🔨) show up in the interface, you can ask Claude to use them. For example: "Who am I in Backlog?". Claude should invoke the `getMyself` tool and show the result.
+ツール（🔨 アイコン）がインターフェースに表示されたら、Claude にツールの利用を依頼できます。例: 「Backlog での自分の情報を教えて」。Claude は `getMyself` ツールを呼び出し、結果を表示します。
 
-### For Local Development
+### ローカル開発向け
 
-If you'd like to iterate and test your MCP server, you can do so in local development. This requires a Backlog OAuth application whose redirect URI is `http://localhost:8788/callback`.
+MCP サーバーをローカルで反復開発・テストできます。これには、リダイレクト URI が `http://localhost:8788/callback` の Backlog OAuth アプリケーションが必要です。
 
-- Create a `.dev.vars` file in your project root (see `.dev.vars.example`):
+- プロジェクトルートに `.dev.vars` ファイルを作成します（`.dev.vars.example` を参照）。
 
 ```
 BACKLOG_CLIENT_ID=your_development_backlog_client_id
 BACKLOG_CLIENT_SECRET=your_development_backlog_client_secret
 COOKIE_ENCRYPTION_KEY=a_random_string
-# Optional: override BACKLOG_HOST locally; otherwise the wrangler.jsonc value is used.
+# 任意: ローカルで BACKLOG_HOST を上書きできます。指定しない場合は wrangler.jsonc の値が使われます。
 # BACKLOG_HOST=yourspace.backlog.com
 ```
 
-#### Develop & Test
+#### 開発とテスト
 
-Run the server locally to make it available at `http://localhost:8788`:
+サーバーをローカルで起動し、`http://localhost:8788` で利用できるようにします。
 
 ```bash
 wrangler dev
 ```
 
-To test the local server, enter `http://localhost:8788/sse` into Inspector and hit connect. Once you follow the prompts, you'll be able to "List Tools".
+ローカルサーバーをテストするには、Inspector に `http://localhost:8788/sse` を入力して接続します。プロンプトに従うと、「List Tools」が利用できます。
 
-#### Using Cursor and other MCP Clients
+#### Cursor やその他の MCP クライアントを使う場合
 
-To connect Cursor with your MCP server, choose `Type`: "Command" and in the `Command` field, combine the command and args fields into one (e.g. `npx mcp-remote https://<your-worker-name>.<your-subdomain>.workers.dev/sse`).
+Cursor を MCP サーバーに接続するには、`Type` で「Command」を選び、`Command` フィールドに command と args を 1 つにまとめて入力します（例: `npx mcp-remote https://<your-worker-name>.<your-subdomain>.workers.dev/sse`）。
 
-Note that while Cursor supports HTTP+SSE servers, it doesn't support authentication, so you still need to use `mcp-remote` (and to use a STDIO server, not an HTTP one).
+Cursor は HTTP+SSE サーバーに対応していますが認証には対応していないため、引き続き `mcp-remote` を使う必要があります（HTTP サーバーではなく STDIO サーバーとして使用します）。
 
-You can connect your MCP server to other MCP clients like Windsurf by opening the client's configuration file, adding the same JSON that was used for the Claude setup, and restarting the MCP client.
+Windsurf などその他の MCP クライアントへ接続する場合は、クライアントの設定ファイルを開き、Claude のセットアップで使用したものと同じ JSON を追加して、MCP クライアントを再起動してください。
 
-## How does it work?
+## 仕組み
 
 #### OAuth Provider
 
-The OAuth Provider library serves as a complete OAuth 2.1 server implementation for Cloudflare Workers. It handles the complexities of the OAuth flow, including token issuance, validation, and management. In this project, it plays the dual role of:
+OAuth Provider ライブラリは、Cloudflare Workers 向けの完全な OAuth 2.1 サーバー実装です。トークンの発行・検証・管理を含む OAuth フローの複雑さを処理します。本プロジェクトでは、次の二重の役割を果たします。
 
-- Authenticating MCP clients that connect to your server
-- Managing the connection to Backlog's OAuth services
-- Securely storing tokens and authentication state in KV storage
+- このサーバーに接続する MCP クライアントの認証
+- Backlog の OAuth サービスとの接続管理
+- トークンと認証状態を KV ストレージへ安全に保存
 
 #### Durable MCP
 
-Durable MCP extends the base MCP functionality with Cloudflare's Durable Objects, providing:
+Durable MCP は、Cloudflare の Durable Objects を用いて基本的な MCP 機能を拡張し、次を提供します。
 
-- Persistent state management for your MCP server
-- Secure storage of authentication context between requests
-- Access to authenticated user information via `this.props`
-- Caching of refreshed Backlog tokens in Durable Object storage
+- MCP サーバーの永続的な状態管理
+- リクエスト間での認証コンテキストの安全な保存
+- `this.props` を通じた認証済みユーザー情報へのアクセス
+- リフレッシュした Backlog トークンの Durable Object ストレージへのキャッシュ
 
 #### MCP Remote
 
-The MCP Remote library enables your server to expose tools that can be invoked by MCP clients like the Inspector. It:
+MCP Remote ライブラリは、Inspector のような MCP クライアントから呼び出せるツールをサーバーが公開できるようにします。次の機能を持ちます。
 
-- Defines the protocol for communication between clients and your server
-- Provides a structured way to define tools
-- Handles serialization and deserialization of requests and responses
-- Maintains the Server-Sent Events (SSE) connection between clients and your server
+- クライアントとサーバー間の通信プロトコルを定義
+- ツールを構造的に定義する手段を提供
+- リクエスト／レスポンスのシリアライズ・デシリアライズを処理
+- クライアントとサーバー間の Server-Sent Events (SSE) 接続を維持
