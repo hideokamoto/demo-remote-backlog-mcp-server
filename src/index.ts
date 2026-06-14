@@ -1,90 +1,87 @@
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
-import { Octokit } from "octokit";
-import { z } from "zod";
-import { GitHubHandler } from "./github-handler";
+import { Backlog } from "backlog-js";
+import { BacklogHandler } from "./backlog-handler";
+import { type Props, refreshUpstreamAuthToken } from "./utils";
 
-// Context from the auth process, encrypted & stored in the auth token
-// and provided to the DurableMCP as this.props
-type Props = {
-	login: string;
-	name: string;
-	email: string;
+// Refresh the access token this many milliseconds before it actually expires,
+// to avoid races where a token expires mid-request.
+const TOKEN_EXPIRY_SKEW_MS = 60_000;
+
+// Shape of the token set we keep in Durable Object storage after a refresh.
+type CachedTokens = {
 	accessToken: string;
+	refreshToken: string;
+	expiresAt: number;
 };
 
-const ALLOWED_USERNAMES = new Set<string>([
-	// Add GitHub usernames of users who should have access to the image generation tool
-	// For example: 'yourusername', 'coworkerusername'
-]);
+const TOKENS_STORAGE_KEY = "backlog:tokens";
 
 export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 	server = new McpServer({
-		name: "Github OAuth Proxy Demo",
+		name: "Backlog OAuth Proxy Demo",
 		version: "1.0.0",
 	});
 
-	async init() {
-		// Hello, world!
-		this.server.tool(
-			"add",
-			"Add two numbers the way only MCP can",
-			{ a: z.number(), b: z.number() },
-			async ({ a, b }) => ({
-				content: [{ text: String(a + b), type: "text" }],
-			}),
-		);
+	/**
+	 * Returns a valid Backlog access token, refreshing it via the refresh token
+	 * when the current one is expired (or about to expire).
+	 *
+	 * `this.props` is immutable for the life of the issued MCP token, so the latest
+	 * tokens are cached in Durable Object storage and reused across requests.
+	 */
+	async getValidAccessToken(): Promise<string> {
+		const cached = await this.ctx.storage.get<CachedTokens>(TOKENS_STORAGE_KEY);
+		const current: CachedTokens = cached ?? {
+			accessToken: this.props!.accessToken,
+			expiresAt: this.props!.expiresAt,
+			refreshToken: this.props!.refreshToken,
+		};
 
-		// Use the upstream access token to facilitate tools
+		if (current.expiresAt - TOKEN_EXPIRY_SKEW_MS > Date.now()) {
+			return current.accessToken;
+		}
+
+		// Token expired (or close to it): refresh it.
+		const [tokens, errResponse] = await refreshUpstreamAuthToken({
+			client_id: this.env.BACKLOG_CLIENT_ID,
+			client_secret: this.env.BACKLOG_CLIENT_SECRET,
+			refresh_token: current.refreshToken,
+			upstream_url: `https://${this.env.BACKLOG_HOST}/api/v2/oauth2/token`,
+		});
+		if (errResponse) {
+			throw new Error("Failed to refresh Backlog access token");
+		}
+
+		const refreshed: CachedTokens = {
+			accessToken: tokens.accessToken,
+			expiresAt: Date.now() + tokens.expiresIn * 1000,
+			refreshToken: tokens.refreshToken,
+		};
+		await this.ctx.storage.put(TOKENS_STORAGE_KEY, refreshed);
+		return refreshed.accessToken;
+	}
+
+	async init() {
+		// Use the upstream Backlog access token to facilitate tools
 		this.server.tool(
-			"userInfoOctokit",
-			"Get user info from GitHub, via Octokit",
+			"getMyself",
+			"Get the authenticated user's own information from Backlog",
 			{},
 			async () => {
-				const octokit = new Octokit({ auth: this.props!.accessToken });
+				const accessToken = await this.getValidAccessToken();
+				const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
 				return {
 					content: [
 						{
-							text: JSON.stringify(await octokit.rest.users.getAuthenticated()),
+							text: JSON.stringify(await backlog.getMyself()),
 							type: "text",
 						},
 					],
 				};
 			},
 		);
-
-		// Dynamically add tools based on the user's login. In this case, I want to limit
-		// access to my Image Generation tool to just me
-		if (ALLOWED_USERNAMES.has(this.props!.login)) {
-			this.server.tool(
-				"generateImage",
-				"Generate an image using the `flux-1-schnell` model. Works best with 8 steps.",
-				{
-					prompt: z
-						.string()
-						.describe("A text description of the image you want to generate."),
-					steps: z
-						.number()
-						.min(4)
-						.max(8)
-						.default(4)
-						.describe(
-							"The number of diffusion steps; higher values can improve quality but take longer. Must be between 4 and 8, inclusive.",
-						),
-				},
-				async ({ prompt, steps }) => {
-					const response = await this.env.AI.run("@cf/black-forest-labs/flux-1-schnell", {
-						prompt,
-						steps,
-					});
-
-					return {
-						content: [{ data: response.image!, mimeType: "image/jpeg", type: "image" }],
-					};
-				},
-			);
-		}
 	}
 }
 
@@ -93,6 +90,6 @@ export default new OAuthProvider({
 	apiRoute: "/mcp",
 	authorizeEndpoint: "/authorize",
 	clientRegistrationEndpoint: "/register",
-	defaultHandler: GitHubHandler as any,
+	defaultHandler: BacklogHandler as any,
 	tokenEndpoint: "/token",
 });

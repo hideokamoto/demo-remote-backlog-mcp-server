@@ -19,8 +19,8 @@
 	 * https://developers.cloudflare.com/workers/configuration/secrets/
 	 * 
 	 * Commands to set secrets:
-	 * npx wrangler secret put GITHUB_CLIENT_ID
-	 * npx wrangler secret put GITHUB_CLIENT_SECRET
+	 * npx wrangler secret put BACKLOG_CLIENT_ID
+	 * npx wrangler secret put BACKLOG_CLIENT_SECRET
 	 * npx wrangler secret put COOKIE_ENCRYPTION_KEY
 	 */
 	"migrations": [
@@ -45,8 +45,8 @@
 			"id": "<Add-KV-ID>"
 		}
 	],
-	"ai": {
-		"binding": "AI"
+	"vars": {
+		"BACKLOG_HOST": "yourspace.backlog.com"
 	},
 	"observability": {
 		"enabled": true
