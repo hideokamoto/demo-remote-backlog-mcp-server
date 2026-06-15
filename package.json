@@ -12,12 +12,6 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "workerd"
-    ]
-  },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.8.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -30,7 +24,16 @@
   "devDependencies": {
     "@types/node": "^25.9.3",
     "typescript": "6.0.3",
-    "vitest": "^3.2.6",
+    "vitest": "^4.1.9",
     "wrangler": "^4.100.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "workerd"
+    ],
+    "overrides": {
+      "esbuild": "0.28.1"
+    }
   }
 }

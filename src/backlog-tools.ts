@@ -1,17 +1,10 @@
 import { BacklogActivityService } from "./daily-report-generator/index.js";
 import type { ActivityResult } from "./daily-report-generator/index.js";
+// Type-only import (erased at runtime, so no import cycle with tools.ts) keeps a
+// single definition of the Backlog client surface shared by the whole registry.
+import type { BacklogClient } from "./tools.js";
 
-/**
- * The subset of the `backlog-js` client used by the tools in this module.
- * Declaring it explicitly keeps the tool logic decoupled from the concrete
- * client and trivial to unit test with a mock.
- */
-export interface BacklogClient {
-	getMyself(): Promise<{ id: number }>;
-	getUserActivities(userId: number, params: Record<string, unknown>): Promise<unknown[]>;
-	getIssue(issueIdOrKey: string): Promise<unknown>;
-	getIssueComments(issueIdOrKey: string, params: { order?: "asc" | "desc"; count?: number }): Promise<unknown>;
-}
+export type { BacklogClient };
 
 /**
  * Resolves a Backlog user id, treating any value `< 1` as "the current user"
