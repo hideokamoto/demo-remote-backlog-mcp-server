@@ -19,6 +19,8 @@ type CachedTokens = {
 const TOKENS_STORAGE_KEY = "backlog:tokens";
 
 export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
+	private refreshInFlight: Promise<CachedTokens> | null = null;
+
 	server = new McpServer({
 		name: "Backlog OAuth Proxy Demo",
 		version: "1.0.0",
@@ -33,6 +35,9 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 	 */
 	async getValidAccessToken(): Promise<string> {
 		const cached = await this.ctx.storage.get<CachedTokens>(TOKENS_STORAGE_KEY);
+		if (!cached && !this.props) {
+			throw new Error("No authentication credentials found");
+		}
 		const current: CachedTokens = cached ?? {
 			accessToken: this.props!.accessToken,
 			expiresAt: this.props!.expiresAt,
@@ -43,11 +48,23 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			return current.accessToken;
 		}
 
-		// Token expired (or close to it): refresh it.
+		// Token expired (or close to it): refresh it. Use a single in-flight refresh
+		// so concurrent requests don't race and invalidate each other's rotated
+		// refresh token.
+		if (!this.refreshInFlight) {
+			this.refreshInFlight = this.refreshAccessToken(current.refreshToken).finally(() => {
+				this.refreshInFlight = null;
+			});
+		}
+		const refreshed = await this.refreshInFlight;
+		return refreshed.accessToken;
+	}
+
+	private async refreshAccessToken(refreshToken: string): Promise<CachedTokens> {
 		const [tokens, errResponse] = await refreshUpstreamAuthToken({
 			client_id: this.env.BACKLOG_CLIENT_ID,
 			client_secret: this.env.BACKLOG_CLIENT_SECRET,
-			refresh_token: current.refreshToken,
+			refresh_token: refreshToken,
 			upstream_url: `https://${this.env.BACKLOG_HOST}/api/v2/oauth2/token`,
 		});
 		if (errResponse) {
@@ -60,7 +77,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			refreshToken: tokens.refreshToken,
 		};
 		await this.ctx.storage.put(TOKENS_STORAGE_KEY, refreshed);
-		return refreshed.accessToken;
+		return refreshed;
 	}
 
 	async init() {

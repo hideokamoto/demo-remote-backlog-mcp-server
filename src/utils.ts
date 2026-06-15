@@ -130,7 +130,12 @@ async function requestUpstreamToken(
 		return [null, new Response("Failed to fetch access token", { status: 500 })];
 	}
 
-	const body = (await resp.json()) as BacklogTokenResponse;
+	let body: BacklogTokenResponse;
+	try {
+		body = (await resp.json()) as BacklogTokenResponse;
+	} catch {
+		return [null, new Response("Invalid JSON response from token endpoint", { status: 502 })];
+	}
 	if (!body.access_token || !body.refresh_token) {
 		return [null, new Response("Missing access token", { status: 400 })];
 	}

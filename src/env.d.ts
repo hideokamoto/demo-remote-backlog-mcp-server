@@ -7,6 +7,10 @@
 interface BacklogSecrets {
 	BACKLOG_CLIENT_ID: string;
 	BACKLOG_CLIENT_SECRET: string;
+	/**
+	 * Secret used to sign approval cookies via HMAC-SHA-256.
+	 * Use a high-entropy value of at least 32 bytes, e.g. `openssl rand -hex 32`.
+	 */
 	COOKIE_ENCRYPTION_KEY: string;
 }
 
