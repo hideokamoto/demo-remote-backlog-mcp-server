@@ -74,6 +74,13 @@ npx @modelcontextprotocol/inspector@latest
 この MCP サーバーは Backlog OAuth で認証を行います。認証済みのユーザーは次のツールを呼び出せます。
 
 - **`getMyself`** — 認証済みユーザー自身の情報を Backlog から取得します（`GET /api/v2/users/myself`）。
+- **`get_issue_with_comments`** — 課題本体とそのコメント一覧をまとめて取得します。`issueId` または `issueKey`（例: `PROJ-123`）のいずれかを指定します。`count` / `order` でコメント取得件数・並び順を制御できます。
+- **`get_user_activities`** — ユーザーの最近のアクティビティを取得します。`userId` に `1` 未満を渡すと認証済みユーザー自身が対象になります。`activityTypeId` / `minId` / `maxId` / `count` / `order` で絞り込めます。
+- **`generate_daily_report`** — 指定ユーザー・指定日（`date` は `YYYY-MM-DD`）の日報を生成します。コメントや意味のある変更だけを残すフィルタを適用し、プロジェクト別にグルーピングしたうえで `templateType`（`markdown` / `text` / `html`）・`language`（`ja` / `en`）で整形したレポート文字列を返します。`userId` に `1` 未満を渡すと自分自身が対象です。
+- **`summarize_daily_activities`** — `generate_daily_report` と同じフィルタ・グルーピングを行いますが、整形済みレポートは付けず構造化データのみを返します。要約は呼び出し側の LLM に委ねる設計です。`userId` に `1` 未満を渡すと自分自身が対象です。
+
+> [!NOTE]
+> 日報系ツールのフィルタ・整形ロジックは `src/daily-report-generator/` に、ツールの中核ロジックは `src/backlog-tools.ts` にまとめてあり、`vitest` でユニットテストしています（`npm test`）。MCP のハンドラ（`src/index.ts`）はこれらの純粋関数を `JSON.stringify` で包むだけの薄い層です。
 
 [`backlog-js`](https://github.com/nulab/backlog-js) クライアントと `getValidAccessToken()` が返すアクセストークンを使えば、`src/index.ts` を拡張して Backlog のツールを追加できます。
 

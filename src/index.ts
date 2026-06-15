@@ -2,7 +2,15 @@ import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
 import { Backlog } from "backlog-js";
+import { z } from "zod";
 import { BacklogHandler } from "./backlog-handler";
+import {
+	type BacklogClient,
+	generateDailyReport,
+	getIssueWithComments,
+	getUserActivities,
+	summarizeDailyActivities,
+} from "./backlog-tools";
 import { type Props, refreshUpstreamAuthToken } from "./utils";
 
 // Refresh the access token this many milliseconds before it actually expires,
@@ -80,6 +88,14 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 		return refreshed;
 	}
 
+	/**
+	 * Builds a Backlog client authenticated with a fresh access token.
+	 */
+	private async backlogClient(): Promise<BacklogClient> {
+		const accessToken = await this.getValidAccessToken();
+		return new Backlog({ accessToken, host: this.env.BACKLOG_HOST }) as unknown as BacklogClient;
+	}
+
 	async init() {
 		// Use the upstream Backlog access token to facilitate tools
 		this.server.tool(
@@ -97,6 +113,78 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 						},
 					],
 				};
+			},
+		);
+
+		// Combines an issue with its comments in a single call.
+		this.server.tool(
+			"get_issue_with_comments",
+			"Get a Backlog issue together with all of its comments. Provide either issueId or issueKey (e.g. PROJ-123).",
+			{
+				issueId: z.string().optional().describe("Issue ID"),
+				issueKey: z.string().optional().describe("Issue key, e.g. PROJ-123"),
+				count: z.number().optional().describe("Number of comments to retrieve (default 100)"),
+				order: z.enum(["asc", "desc"]).optional().describe("Comment sort order (default asc)"),
+			},
+			async (params) => {
+				const backlog = await this.backlogClient();
+				const result = await getIssueWithComments(backlog, params);
+				return { content: [{ type: "text", text: JSON.stringify(result) }] };
+			},
+		);
+
+		// Recent activities for a user (use userId < 1 for the current user).
+		this.server.tool(
+			"get_user_activities",
+			"Get a Backlog user's recent activities. Use a userId < 1 for the authenticated user.",
+			{
+				userId: z.number().describe("Backlog user ID. Use a value < 1 for the authenticated user."),
+				activityTypeId: z.array(z.number()).optional().describe("Filter by activity type IDs"),
+				minId: z.number().optional().describe("Minimum activity ID"),
+				maxId: z.number().optional().describe("Maximum activity ID"),
+				count: z.number().optional().describe("Number of activities to retrieve"),
+				order: z.enum(["asc", "desc"]).optional().describe("Sort order"),
+			},
+			async (params) => {
+				const backlog = await this.backlogClient();
+				const result = await getUserActivities(backlog, params);
+				return { content: [{ type: "text", text: JSON.stringify(result) }] };
+			},
+		);
+
+		// Filtered, grouped and rendered daily report for a user/date.
+		this.server.tool(
+			"generate_daily_report",
+			"Generate a daily activity report for a Backlog user on a given date. Activities are filtered to meaningful ones (comments or substantive changes), grouped by project, and rendered. Use userId < 1 for the authenticated user.",
+			{
+				userId: z.number().describe("Backlog user ID. Use a value < 1 for the authenticated user."),
+				date: z.string().describe("Target date in YYYY-MM-DD format"),
+				templateType: z
+					.enum(["markdown", "text", "html"])
+					.optional()
+					.describe("Report output format (default markdown)"),
+				language: z.enum(["ja", "en"]).optional().describe("Report language (default ja)"),
+			},
+			async (params) => {
+				const backlog = await this.backlogClient();
+				const result = await generateDailyReport(backlog, params);
+				return { content: [{ type: "text", text: JSON.stringify(result) }] };
+			},
+		);
+
+		// Same filtering/grouping as the daily report, but returns structured data
+		// without a pre-rendered report so the calling LLM can summarize it.
+		this.server.tool(
+			"summarize_daily_activities",
+			"Get a Backlog user's meaningful activities for a given date as structured data (filtered and grouped by project), without a pre-rendered report, so the calling model can summarize them. Use userId < 1 for the authenticated user.",
+			{
+				userId: z.number().describe("Backlog user ID. Use a value < 1 for the authenticated user."),
+				date: z.string().describe("Target date in YYYY-MM-DD format"),
+			},
+			async (params) => {
+				const backlog = await this.backlogClient();
+				const result = await summarizeDailyActivities(backlog, params);
+				return { content: [{ type: "text", text: JSON.stringify(result) }] };
 			},
 		);
 	}
