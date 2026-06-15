@@ -1,6 +1,4 @@
+BACKLOG_HOST=yourspace.backlog.com
 BACKLOG_CLIENT_ID=<your backlog oauth client id>
 BACKLOG_CLIENT_SECRET=<your backlog oauth client secret>
 COOKIE_ENCRYPTION_KEY=<a random string, e.g. openssl rand -hex 32>
-# Optional: override the target Backlog space host for local development.
-# Otherwise the value from wrangler.jsonc "vars" is used.
-# BACKLOG_HOST=yourspace.backlog.com

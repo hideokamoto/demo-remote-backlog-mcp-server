@@ -3,7 +3,7 @@
 // Runtime types generated with workerd@1.20260611.1 2025-03-10 nodejs_compat
 interface __BaseEnv_Env {
 	OAUTH_KV: KVNamespace;
-	BACKLOG_HOST: "yourspace.backlog.com";
+	BACKLOG_HOST: string;
 	MCP_OBJECT: DurableObjectNamespace<import("./src/index").MyMCP>;
 }
 declare namespace Cloudflare {

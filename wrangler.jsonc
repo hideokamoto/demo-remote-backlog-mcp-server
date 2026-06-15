@@ -17,8 +17,9 @@
 	/**
 	 * Note: Use secrets to store sensitive data.
 	 * https://developers.cloudflare.com/workers/configuration/secrets/
-	 * 
+	 *
 	 * Commands to set secrets:
+	 * npx wrangler secret put BACKLOG_HOST
 	 * npx wrangler secret put BACKLOG_CLIENT_ID
 	 * npx wrangler secret put BACKLOG_CLIENT_SECRET
 	 * npx wrangler secret put COOKIE_ENCRYPTION_KEY
@@ -45,9 +46,7 @@
 			"id": "<Add-KV-ID>"
 		}
 	],
-	"vars": {
-		"BACKLOG_HOST": "yourspace.backlog.com"
-	},
+	"vars": {},
 	"observability": {
 		"enabled": true
 	},
