@@ -47,6 +47,42 @@ describe("getUserPrefs", () => {
 		expect(await getUserPrefs(kv, 1)).toEqual({ defaultProjectId: 10 });
 		expect(await getUserPrefs(kv, 2)).toEqual({ defaultProjectId: 20 });
 	});
+
+	it("returns empty object for corrupted KV data (not an object)", async () => {
+		const kv = mockKV();
+		kv._store.set(userPrefsKey(1), JSON.stringify("corrupted string"));
+		expect(await getUserPrefs(kv, 1)).toEqual({});
+	});
+
+	it("returns empty object for corrupted KV data (array)", async () => {
+		const kv = mockKV();
+		kv._store.set(userPrefsKey(1), JSON.stringify([1, 2, 3]));
+		expect(await getUserPrefs(kv, 1)).toEqual({});
+	});
+
+	it("strips defaultProjectId when it is not a positive integer", async () => {
+		const kv = mockKV();
+		kv._store.set(userPrefsKey(1), JSON.stringify({ defaultProjectId: -5 }));
+		expect(await getUserPrefs(kv, 1)).toEqual({});
+	});
+
+	it("strips defaultProjectId when it is a float", async () => {
+		const kv = mockKV();
+		kv._store.set(userPrefsKey(1), JSON.stringify({ defaultProjectId: 1.5 }));
+		expect(await getUserPrefs(kv, 1)).toEqual({});
+	});
+
+	it("strips defaultProjectId when it is a string", async () => {
+		const kv = mockKV();
+		kv._store.set(userPrefsKey(1), JSON.stringify({ defaultProjectId: "123" }));
+		expect(await getUserPrefs(kv, 1)).toEqual({});
+	});
+
+	it("strips unrecognised keys from KV data", async () => {
+		const kv = mockKV();
+		kv._store.set(userPrefsKey(1), JSON.stringify({ defaultProjectId: 42, unknownKey: "evil" }));
+		expect(await getUserPrefs(kv, 1)).toEqual({ defaultProjectId: 42 });
+	});
 });
 
 describe("setUserPref", () => {
@@ -90,14 +126,13 @@ describe("clearUserPref", () => {
 		await expect(clearUserPref(kv, 1, "defaultProjectId")).resolves.toBeUndefined();
 	});
 
-	it("does not remove other preferences when clearing one", async () => {
+	it("deletes the KV key entirely when only unknown keys remain after clearing the last valid pref", async () => {
 		const kv = mockKV();
-		// Manually seed two prefs (even though only defaultProjectId is currently allowed,
-		// the pure function should handle multi-key objects correctly)
+		// KV contains a valid pref alongside an unrecognised key; after clearing
+		// defaultProjectId the validation layer strips the unknown key too, leaving
+		// no valid prefs, so the KV entry is deleted entirely.
 		kv._store.set(userPrefsKey(1), JSON.stringify({ defaultProjectId: 10, extra: "val" }));
 		await clearUserPref(kv, 1, "defaultProjectId");
-		const raw = kv._store.get(userPrefsKey(1));
-		expect(raw).toBeDefined();
-		expect(JSON.parse(raw!)).toEqual({ extra: "val" });
+		expect(kv._store.has(userPrefsKey(1))).toBe(false);
 	});
 });

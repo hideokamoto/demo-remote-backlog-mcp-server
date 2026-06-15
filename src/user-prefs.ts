@@ -6,7 +6,18 @@ export function userPrefsKey(userId: number): string {
 
 export async function getUserPrefs(kv: KVNamespace, userId: number): Promise<UserPrefs> {
 	const raw = await kv.get(userPrefsKey(userId), "json");
-	return (raw as UserPrefs) ?? {};
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+
+	const record = raw as Record<string, unknown>;
+	const prefs: UserPrefs = {};
+	if (
+		typeof record.defaultProjectId === "number" &&
+		Number.isSafeInteger(record.defaultProjectId) &&
+		record.defaultProjectId > 0
+	) {
+		prefs.defaultProjectId = record.defaultProjectId;
+	}
+	return prefs;
 }
 
 export async function setUserPref(
