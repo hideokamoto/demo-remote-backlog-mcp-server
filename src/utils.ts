@@ -159,3 +159,13 @@ export type Props = {
 	refreshToken: string;
 	expiresAt: number;
 };
+
+// User preferences stored in KV, keyed by userId, persisted across sessions
+export type UserPrefs = {
+	defaultProjectId?: number;
+};
+
+export const ALLOWED_PREF_KEYS = ["defaultProjectId"] as const;
+export type PrefKey = (typeof ALLOWED_PREF_KEYS)[number];
+
+export const USER_PREFS_KV_PREFIX = "user:prefs:";
