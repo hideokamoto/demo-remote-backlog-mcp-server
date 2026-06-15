@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
 import { Backlog } from "backlog-js";
 import { BacklogHandler } from "./backlog-handler";
-import { tools } from "./tools";
+import { executeTool, tools } from "./tools";
 import { type Props, refreshUpstreamAuthToken } from "./utils";
 
 // Refresh the access token this many milliseconds before it actually expires,
@@ -89,7 +89,9 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			this.server.tool(tool.name, tool.description, tool.schema, async (args: unknown) => {
 				const accessToken = await this.getValidAccessToken();
 				const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
-				return tool.handler(backlog, args);
+				// executeTool wraps the handler so Backlog API failures come back as
+				// structured `isError` results rather than opaque server errors.
+				return executeTool(tool, backlog, args);
 			});
 		}
 	}

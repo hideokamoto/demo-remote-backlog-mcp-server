@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { type BacklogClient, type ToolDef, tools } from "./tools";
+import { z } from "zod";
+import { type BacklogClient, type ToolDef, executeTool, tools } from "./tools";
 
 /**
  * Build a fake BacklogClient where every method is a vi.fn() returning the
@@ -179,5 +180,56 @@ describe("notification tools", () => {
 		(backlog as Record<string, unknown>).getNotifications = getNotifications;
 		await run("getNotifications", backlog);
 		expect(getNotifications).toHaveBeenCalledWith({});
+	});
+});
+
+describe("executeTool error handling", () => {
+	it("returns a structured isError result when the Backlog call throws", async () => {
+		const backlog = fakeBacklog();
+		(backlog as Record<string, unknown>).getMyself = vi.fn().mockRejectedValue(new Error("boom"));
+		const result = await executeTool(getTool("getMyself"), backlog, {});
+		expect(result.isError).toBe(true);
+		expect(result.content[0].text).toContain("boom");
+	});
+
+	it("normalises non-Error throws to a string message", async () => {
+		const backlog = fakeBacklog();
+		(backlog as Record<string, unknown>).getMyself = vi.fn().mockRejectedValue("nope");
+		const result = await executeTool(getTool("getMyself"), backlog, {});
+		expect(result.isError).toBe(true);
+		expect(result.content[0].text).toContain("nope");
+	});
+
+	it("passes a successful result through unchanged", async () => {
+		const result = await executeTool(getTool("getMyself"), fakeBacklog({ id: 1 }), {});
+		expect(result.isError).toBeUndefined();
+		expect(result.content[0].text).toBe(JSON.stringify({ id: 1 }));
+	});
+});
+
+describe("numeric id coercion", () => {
+	it("getIssues coerces a single numeric id into an array", () => {
+		const schema = z.object(getTool("getIssues").schema);
+		const parsed = schema.parse({ projectId: 5, statusId: [1, 2] });
+		expect(parsed.projectId).toEqual([5]);
+		expect(parsed.statusId).toEqual([1, 2]);
+	});
+
+	it("postIssue coerces a single notifiedUserId into an array", () => {
+		const schema = z.object(getTool("postIssue").schema);
+		const parsed = schema.parse({
+			projectId: 1,
+			summary: "Bug",
+			issueTypeId: 2,
+			priorityId: 3,
+			notifiedUserId: 7,
+		});
+		expect(parsed.notifiedUserId).toEqual([7]);
+	});
+
+	it("postIssueComments coerces a single notifiedUserId into an array", () => {
+		const schema = z.object(getTool("postIssueComments").schema);
+		const parsed = schema.parse({ issueIdOrKey: "DEMO-1", content: "hi", notifiedUserId: 7 });
+		expect(parsed.notifiedUserId).toEqual([7]);
 	});
 });

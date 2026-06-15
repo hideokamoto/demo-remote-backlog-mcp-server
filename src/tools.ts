@@ -59,10 +59,32 @@ function jsonResult(data: unknown): ToolResult {
 	return { content: [{ type: "text", text: JSON.stringify(data) }] };
 }
 
+/**
+ * Run a tool's handler, converting any thrown error (e.g. a failed Backlog API
+ * request) into a structured `isError` result so the MCP client / LLM can read
+ * and react to it instead of receiving an opaque server error.
+ */
+export async function executeTool(tool: ToolDef, backlog: BacklogClient, args: unknown): Promise<ToolResult> {
+	try {
+		return await tool.handler(backlog, args);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return {
+			content: [{ type: "text", text: `Backlog API error in ${tool.name}: ${message}` }],
+			isError: true,
+		};
+	}
+}
+
 // Backlog requires `string | number` for *IdOrKey arguments: users pass keys
 // like "DEMO-1" or numeric IDs.
 const idOrKey = z.union([z.string(), z.number()]);
 const order = z.enum(["asc", "desc"]);
+// LLMs often pass a single number where Backlog expects a number[] (e.g. statusId).
+// Accept either and always normalise to an array.
+const numberOrArray = z
+	.union([z.number(), z.array(z.number())])
+	.transform((val) => (Array.isArray(val) ? val : [val]));
 // Mirrors backlog-js `Option.Issue.SortKey`.
 const issueSortKey = z.enum([
 	"issueType",
@@ -152,14 +174,14 @@ export const tools: ToolDef[] = [
 		description:
 			"Search and list issues with filters such as project, status, assignee, keyword, and date ranges.",
 		schema: {
-			projectId: z.array(z.number()).optional().describe("Filter by project IDs."),
-			issueTypeId: z.array(z.number()).optional().describe("Filter by issue type IDs."),
-			categoryId: z.array(z.number()).optional().describe("Filter by category IDs."),
-			milestoneId: z.array(z.number()).optional().describe("Filter by milestone (version) IDs."),
-			statusId: z.array(z.number()).optional().describe("Filter by status IDs."),
-			priorityId: z.array(z.number()).optional().describe("Filter by priority IDs."),
-			assigneeId: z.array(z.number()).optional().describe("Filter by assignee user IDs."),
-			parentIssueId: z.array(z.number()).optional().describe("Filter to children of these parent issue IDs."),
+			projectId: numberOrArray.optional().describe("Filter by project IDs."),
+			issueTypeId: numberOrArray.optional().describe("Filter by issue type IDs."),
+			categoryId: numberOrArray.optional().describe("Filter by category IDs."),
+			milestoneId: numberOrArray.optional().describe("Filter by milestone (version) IDs."),
+			statusId: numberOrArray.optional().describe("Filter by status IDs."),
+			priorityId: numberOrArray.optional().describe("Filter by priority IDs."),
+			assigneeId: numberOrArray.optional().describe("Filter by assignee user IDs."),
+			parentIssueId: numberOrArray.optional().describe("Filter to children of these parent issue IDs."),
 			keyword: z.string().optional().describe("Full-text search keyword."),
 			createdSince: z.string().optional().describe("Created on or after this date (yyyy-MM-dd)."),
 			createdUntil: z.string().optional().describe("Created on or before this date (yyyy-MM-dd)."),
@@ -197,10 +219,10 @@ export const tools: ToolDef[] = [
 			startDate: z.string().optional().describe("Start date (yyyy-MM-dd)."),
 			dueDate: z.string().optional().describe("Due date (yyyy-MM-dd)."),
 			estimatedHours: z.number().optional().describe("Estimated hours."),
-			categoryId: z.array(z.number()).optional().describe("Category IDs."),
-			milestoneId: z.array(z.number()).optional().describe("Milestone (version) IDs."),
-			versionId: z.array(z.number()).optional().describe("Affected version IDs."),
-			notifiedUserId: z.array(z.number()).optional().describe("User IDs to notify."),
+			categoryId: numberOrArray.optional().describe("Category IDs."),
+			milestoneId: numberOrArray.optional().describe("Milestone (version) IDs."),
+			versionId: numberOrArray.optional().describe("Affected version IDs."),
+			notifiedUserId: numberOrArray.optional().describe("User IDs to notify."),
 		},
 		handler: async (backlog, args) => jsonResult(await backlog.postIssue(args)),
 	}),
@@ -221,7 +243,7 @@ export const tools: ToolDef[] = [
 			estimatedHours: z.number().optional().describe("Estimated hours."),
 			actualHours: z.number().optional().describe("Actual hours."),
 			comment: z.string().optional().describe("Comment to add alongside the update."),
-			notifiedUserId: z.array(z.number()).optional().describe("User IDs to notify."),
+			notifiedUserId: numberOrArray.optional().describe("User IDs to notify."),
 		},
 		handler: async (backlog, { issueIdOrKey, ...params }) =>
 			jsonResult(await backlog.patchIssue(issueIdOrKey, params)),
@@ -247,7 +269,7 @@ export const tools: ToolDef[] = [
 		schema: {
 			issueIdOrKey: idOrKey.describe('Issue key (e.g. "DEMO-123") or numeric ID.'),
 			content: z.string().describe("Comment body (Markdown / Backlog notation supported)."),
-			notifiedUserId: z.array(z.number()).optional().describe("User IDs to notify."),
+			notifiedUserId: numberOrArray.optional().describe("User IDs to notify."),
 		},
 		handler: async (backlog, { issueIdOrKey, ...params }) =>
 			jsonResult(await backlog.postIssueComments(issueIdOrKey, params)),
