@@ -7,7 +7,9 @@
     "dev": "wrangler dev",
     "start": "wrangler dev",
     "cf-typegen": "wrangler types",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'No tests'"
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.8.0",
