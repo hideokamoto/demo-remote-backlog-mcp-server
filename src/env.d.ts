@@ -5,6 +5,7 @@
 // Both the global `Env` (used by Hono's `c.env`) and `Cloudflare.Env` (used by
 // the `env` import from `cloudflare:workers`) need to be augmented.
 interface BacklogSecrets {
+	BACKLOG_HOST: string;
 	BACKLOG_CLIENT_ID: string;
 	BACKLOG_CLIENT_SECRET: string;
 	/**
