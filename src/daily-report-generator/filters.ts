@@ -48,23 +48,17 @@ export class MeaningfulChangeFilter implements ActivityFilter {
 			return false;
 		}
 
-		if (changes.length === 1) {
-			const field = changes[0].field;
-			const fieldText = changes[0].field_text || "";
+		// Non-meaningful when *every* change is a deadline or an assignee change.
+		// Using `every` over the combined set also correctly covers a mix of the
+		// two (e.g. one deadline change + one assignee change), which separate
+		// "all milestone" / "all assignee" checks would miss.
+		return changes.every((change) => {
+			const fieldText = change.field_text || "";
 			return (
-				this.isFieldInList(field, fieldText, this.milestoneFields) ||
-				this.isFieldInList(field, fieldText, this.assigneeFields)
+				this.isFieldInList(change.field, fieldText, this.milestoneFields) ||
+				this.isFieldInList(change.field, fieldText, this.assigneeFields)
 			);
-		}
-
-		const onlyMilestoneChanges = changes.every((change) =>
-			this.isFieldInList(change.field, change.field_text || "", this.milestoneFields),
-		);
-		const onlyAssigneeChanges = changes.every((change) =>
-			this.isFieldInList(change.field, change.field_text || "", this.assigneeFields),
-		);
-
-		return onlyMilestoneChanges || onlyAssigneeChanges;
+		});
 	}
 
 	private isFieldInList(field: string, fieldText: string, fieldList: string[]): boolean {

@@ -64,11 +64,14 @@ export async function getIssueWithComments(
 	if (!issueIdOrKey) {
 		throw new Error("issueId or issueKey is required");
 	}
-	const issue = await backlog.getIssue(issueIdOrKey);
-	const comments = await backlog.getIssueComments(issueIdOrKey, {
-		order: order || "asc",
-		count: count || 100,
-	});
+	// The issue and its comments are independent reads — fetch them in parallel.
+	const [issue, comments] = await Promise.all([
+		backlog.getIssue(issueIdOrKey),
+		backlog.getIssueComments(issueIdOrKey, {
+			order: order || "asc",
+			count: count || 100,
+		}),
+	]);
 	return { issue, comments };
 }
 

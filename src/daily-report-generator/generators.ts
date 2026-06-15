@@ -66,6 +66,8 @@ export interface ReportTemplate {
 	formatComment(content: string): string;
 	formatChangesHeader(): string;
 	formatChangeLine(field: string, oldValue: string | null, newValue: string | null): string;
+	/** Closes the change list opened by {@link formatChangesHeader}. */
+	formatChangesFooter(): string;
 	formatCreationInfo(time: string, username: string): string;
 	formatSeparator(): string;
 	wrapReport(content: string): string;
@@ -101,6 +103,10 @@ export class MarkdownTemplate implements ReportTemplate {
 		const oldText = oldValue || this.resources.noneValue;
 		const newText = newValue || this.resources.noneValue;
 		return `- ${field}: ${oldText} → ${newText}\n`;
+	}
+
+	formatChangesFooter(): string {
+		return "";
 	}
 
 	formatCreationInfo(time: string, username: string): string {
@@ -148,6 +154,10 @@ export class TextTemplate implements ReportTemplate {
 		return `* ${field}: ${oldText} → ${newText}\n`;
 	}
 
+	formatChangesFooter(): string {
+		return "";
+	}
+
 	formatCreationInfo(time: string, username: string): string {
 		return `${time} ${this.resources.byUser} ${username}\n\n`;
 	}
@@ -193,12 +203,16 @@ export class HtmlTemplate implements ReportTemplate {
 		return `<li>${field}: ${oldText} → ${newText}</li>`;
 	}
 
+	formatChangesFooter(): string {
+		return `</ul>`;
+	}
+
 	formatCreationInfo(time: string, username: string): string {
 		return `<div class="meta"><em>${time} ${this.resources.byUser} ${username}</em></div>`;
 	}
 
 	formatSeparator(): string {
-		return `</ul><hr>`;
+		return `<hr>`;
 	}
 
 	wrapReport(content: string): string {
@@ -214,10 +228,15 @@ export interface DateFormatter {
 }
 
 export class DefaultDateFormatter implements DateFormatter {
+	// Backlog timestamps are UTC and Cloudflare Workers also run in UTC, so we
+	// default to Asia/Tokyo to render times for the typical Backlog (Nulab) user.
+	constructor(private timeZone: string = "Asia/Tokyo") {}
+
 	formatTime(dateString: string): string {
 		return new Date(dateString).toLocaleTimeString("ja-JP", {
 			hour: "2-digit",
 			minute: "2-digit",
+			timeZone: this.timeZone,
 		});
 	}
 }
@@ -324,6 +343,7 @@ export class TemplateReportGenerator implements ReportGenerator {
 						const fieldName = change.field_text || change.field;
 						report += this.template.formatChangeLine(fieldName, change.old_value, change.new_value);
 					});
+					report += this.template.formatChangesFooter();
 				}
 
 				const createdTime = this.dateFormatter.formatTime(activity.created);

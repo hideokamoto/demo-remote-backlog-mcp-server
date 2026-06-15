@@ -22,6 +22,13 @@ export interface BacklogActivityServiceConfig {
 	reportConfig?: ReportGeneratorConfig;
 	/** Custom report generator override. */
 	reportGenerator?: ReportGenerator;
+	/**
+	 * IANA timezone used to bucket activities into a calendar day. Backlog
+	 * timestamps are UTC and this server runs on Cloudflare Workers (also UTC),
+	 * so we default to Asia/Tokyo to keep day boundaries correct for the typical
+	 * Backlog (Nulab) user.
+	 */
+	timeZone?: string;
 }
 
 /**
@@ -31,6 +38,7 @@ export interface BacklogActivityServiceConfig {
 export class BacklogActivityService {
 	private filter: ActivityFilter;
 	private reportGenerator: ReportGenerator;
+	private timeZone: string;
 
 	constructor(
 		private backlog: ActivitySource,
@@ -39,6 +47,18 @@ export class BacklogActivityService {
 		this.filter = config.filter || new OrFilter([new CommentFilter(), new MeaningfulChangeFilter()]);
 		this.reportGenerator =
 			config.reportGenerator || new TemplateReportGenerator(config.reportConfig || {});
+		this.timeZone = config.timeZone || "Asia/Tokyo";
+	}
+
+	/** Formats a Date as YYYY-MM-DD in the configured timezone. */
+	private formatDate(date: Date): string {
+		// en-CA renders dates as ISO-style YYYY-MM-DD.
+		return new Intl.DateTimeFormat("en-CA", {
+			timeZone: this.timeZone,
+			year: "numeric",
+			month: "2-digit",
+			day: "2-digit",
+		}).format(date);
 	}
 
 	setFilter(filter: ActivityFilter): void {
@@ -58,13 +78,12 @@ export class BacklogActivityService {
 	 * grouped by project, together with a rendered report.
 	 */
 	async getMeaningfulActivities(userId: number, date: string): Promise<ActivityResult> {
-		const formattedDate = (date ? new Date(date) : new Date()).toISOString().split("T")[0];
+		const formattedDate = date || this.formatDate(new Date());
 
 		const activities = await this.backlog.getUserActivities(userId, { count: 100 });
 
 		const dayActivities = (activities as BacklogActivity[]).filter((activity) => {
-			const activityDate = activity.created.split("T")[0];
-			return activityDate === formattedDate;
+			return this.formatDate(new Date(activity.created)) === formattedDate;
 		});
 
 		const meaningfulActivities = dayActivities.filter((activity) => this.filter.filter(activity));

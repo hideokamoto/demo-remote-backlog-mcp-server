@@ -96,6 +96,19 @@ describe("BacklogActivityService.getMeaningfulActivities", () => {
 		expect(result.report).toContain("did the work");
 	});
 
+	it("buckets activities by the configured timezone (JST default)", async () => {
+		// 2023-04-01T16:00Z is 2023-04-02 01:00 JST, so it belongs to Apr 2 in JST.
+		const backlog = mockBacklog([
+			activity({ id: 1, created: "2023-04-01T16:00:00Z", comment: "late night JST" }),
+			activity({ id: 2, created: "2023-04-02T02:00:00Z", comment: "also Apr 2 JST" }),
+		]);
+		const service = new BacklogActivityService(backlog);
+
+		const result = await service.getMeaningfulActivities(100, "2023-04-02");
+
+		expect(result.activities.map((a) => a.id)).toEqual([1, 2]);
+	});
+
 	it("honors a configured template type for the report", async () => {
 		const backlog = mockBacklog([activity({ id: 1, projectKey: "PROJ", comment: "did the work" })]);
 		const service = new BacklogActivityService(backlog, { reportConfig: { templateType: "html" } });

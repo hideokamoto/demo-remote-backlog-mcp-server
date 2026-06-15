@@ -56,6 +56,27 @@ describe("TemplateReportGenerator", () => {
 		expect(report).toContain("<h2>PROJ: My Project</h2>");
 	});
 
+	it("produces balanced <ul>/</ul> tags in html whether or not changes exist", () => {
+		const withChanges = activity();
+		const noChanges = activity({
+			content: {
+				id: 10,
+				key_id: 124,
+				summary: "No change item",
+				description: null,
+				comment: { id: 2, content: "just a comment" },
+			},
+		} as Partial<BacklogActivity>);
+
+		const report = new TemplateReportGenerator({ templateType: "html" }).generate([withChanges, noChanges]);
+
+		const opens = report.match(/<ul>/g)?.length ?? 0;
+		const closes = report.match(/<\/ul>/g)?.length ?? 0;
+		expect(opens).toBe(closes);
+		// The activity without changes must not emit an orphaned closing tag.
+		expect(opens).toBe(1);
+	});
+
 	it("groups multiple activities under their project key", () => {
 		const a = activity();
 		const b = activity({ project: { id: 2, projectKey: "OTHER", name: "Other" } } as Partial<BacklogActivity>);

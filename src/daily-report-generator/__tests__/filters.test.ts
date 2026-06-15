@@ -119,6 +119,16 @@ describe("filters", () => {
 			expect(filter.filter(activity)).toBe(false);
 		});
 
+		it("returns false when changes are a mix of only deadline and assignee fields", () => {
+			const activity = createMockActivity({
+				changes: [
+					{ field: "limitDate", new_value: "2023-03-10", old_value: "2023-03-01", type: "standard" },
+					{ field: "assignee", new_value: "user2", old_value: "user1", type: "standard" },
+				],
+			});
+			expect(filter.filter(activity)).toBe(false);
+		});
+
 		it("returns true when a deadline change is mixed with a substantive change", () => {
 			const activity = createMockActivity({
 				changes: [
