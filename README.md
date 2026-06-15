@@ -4,6 +4,9 @@
 
 ご自身の Cloudflare アカウントにデプロイでき、ご自身の Backlog OAuth アプリケーションを登録すれば、すぐに拡張可能なリモート MCP サーバーが手に入ります。ユーザーは Backlog アカウントでサインインして、この MCP サーバーに接続できます。
 
+> [!NOTE]
+> このプロジェクトは、Cloudflare の公式サンプル [`cloudflare/ai` の `demos/remote-mcp-google-oauth`](https://github.com/cloudflare/ai/tree/main/demos/remote-mcp-google-oauth) をベースに、認証先を Google から Backlog (Nulab) に置き換えて実装したものです。
+
 この MCP サーバー（[Cloudflare Workers](https://developers.cloudflare.com/workers/) 上で動作）は、次の役割を担います。
 
 - MCP クライアントに対しては OAuth **サーバー**として動作
@@ -49,7 +52,17 @@ wrangler secret put COOKIE_ENCRYPTION_KEY # 任意のランダム文字列。例
 
 - KV ネームスペースを作成します:
   `wrangler kv namespace create "OAUTH_KV"`
-- 出力された KV ID を Wrangler の設定ファイルに反映します。
+- コマンドの出力に表示される KV ID（`id = "..."`）をコピーします。
+- `wrangler.jsonc` の `kv_namespaces` にある `id` を、**自分のアカウントで作成した KV ID に必ず置き換えてください**。リポジトリにコミットされている ID は作者の環境のものなので、そのままでは動作しません。
+
+  ```jsonc
+  "kv_namespaces": [
+    {
+      "binding": "OAUTH_KV",
+      "id": "<ここをあなたの KV ID に置き換える>"
+    }
+  ],
+  ```
 
 #### デプロイとテスト
 
@@ -157,3 +170,7 @@ MCP Remote ライブラリは、Inspector のような MCP クライアントか
 - ツールを構造的に定義する手段を提供
 - リクエスト／レスポンスのシリアライズ・デシリアライズを処理
 - クライアントとサーバー間の Server-Sent Events (SSE) 接続を維持
+
+## ライセンス
+
+[MIT License](./LICENSE) の下で公開しています。
