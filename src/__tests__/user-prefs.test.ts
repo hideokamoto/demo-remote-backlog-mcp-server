@@ -78,6 +78,18 @@ describe("getUserPrefs", () => {
 		expect(await getUserPrefs(kv, 1)).toEqual({});
 	});
 
+	it("strips defaultProjectId when it is zero", async () => {
+		const kv = mockKV();
+		kv._store.set(userPrefsKey(1), JSON.stringify({ defaultProjectId: 0 }));
+		expect(await getUserPrefs(kv, 1)).toEqual({});
+	});
+
+	it("strips defaultProjectId when it is not a safe integer", async () => {
+		const kv = mockKV();
+		kv._store.set(userPrefsKey(1), JSON.stringify({ defaultProjectId: Number.MAX_SAFE_INTEGER + 1 }));
+		expect(await getUserPrefs(kv, 1)).toEqual({});
+	});
+
 	it("strips unrecognised keys from KV data", async () => {
 		const kv = mockKV();
 		kv._store.set(userPrefsKey(1), JSON.stringify({ defaultProjectId: 42, unknownKey: "evil" }));
