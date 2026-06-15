@@ -1,5 +1,11 @@
 import type { Backlog } from "backlog-js";
 import { z } from "zod";
+import {
+	generateDailyReport,
+	getIssueWithComments,
+	getUserActivities,
+	summarizeDailyActivities,
+} from "./backlog-tools.js";
 
 /**
  * The subset of the `backlog-js` client used by the Phase 1 tools. Declaring it
@@ -22,6 +28,7 @@ export type BacklogClient = Pick<
 	| "getIssueComments"
 	| "postIssueComments"
 	| "getNotifications"
+	| "getUserActivities"
 >;
 
 /**
@@ -286,5 +293,58 @@ export const tools: ToolDef[] = [
 			order: order.optional().describe("Sort order."),
 		},
 		handler: async (backlog, args) => jsonResult(await backlog.getNotifications(args)),
+	}),
+
+	// ── Activities & daily reports ──────────────────────────────────────────────
+	defineTool({
+		name: "get_user_activities",
+		description:
+			"Get a Backlog user's recent activities (work log). Use a userId < 1 for the authenticated user.",
+		schema: {
+			userId: z.number().describe("Backlog user ID. Use a value < 1 for the authenticated user."),
+			activityTypeId: z.array(z.number()).optional().describe("Filter by activity type IDs."),
+			minId: z.number().optional().describe("Return activities with an ID greater than this."),
+			maxId: z.number().optional().describe("Return activities with an ID less than this."),
+			count: z.number().optional().describe("Number of activities to return (1-100)."),
+			order: order.optional().describe("Sort order."),
+		},
+		handler: async (backlog, args) => jsonResult(await getUserActivities(backlog, args)),
+	}),
+	defineTool({
+		name: "get_issue_with_comments",
+		description:
+			"Get an issue together with its comments in a single call. Provide either issueId or issueKey (e.g. DEMO-123). Convenient to avoid a second round-trip; for issues with very many comments, prefer getIssue + getIssueComments with pagination so the combined payload doesn't overflow the context window.",
+		schema: {
+			issueId: z.string().optional().describe("Issue numeric ID (as a string)."),
+			issueKey: z.string().optional().describe('Issue key, e.g. "DEMO-123".'),
+			count: z.number().optional().describe("Number of comments to retrieve (default 100)."),
+			order: order.optional().describe("Comment sort order (default asc)."),
+		},
+		handler: async (backlog, args) => jsonResult(await getIssueWithComments(backlog, args)),
+	}),
+	defineTool({
+		name: "generate_daily_report",
+		description:
+			"Generate a daily activity report for a Backlog user on a given date. Activities are filtered to meaningful ones (comments or substantive changes), grouped by project, and rendered. Use userId < 1 for the authenticated user.",
+		schema: {
+			userId: z.number().describe("Backlog user ID. Use a value < 1 for the authenticated user."),
+			date: z.string().describe("Target date in YYYY-MM-DD format."),
+			templateType: z
+				.enum(["markdown", "text", "html"])
+				.optional()
+				.describe("Report output format (default markdown)."),
+			language: z.enum(["ja", "en"]).optional().describe("Report language (default ja)."),
+		},
+		handler: async (backlog, args) => jsonResult(await generateDailyReport(backlog, args)),
+	}),
+	defineTool({
+		name: "summarize_daily_activities",
+		description:
+			"Get a Backlog user's meaningful activities for a given date as structured data (filtered and grouped by project), without a pre-rendered report, so the calling model can summarize them. Use userId < 1 for the authenticated user.",
+		schema: {
+			userId: z.number().describe("Backlog user ID. Use a value < 1 for the authenticated user."),
+			date: z.string().describe("Target date in YYYY-MM-DD format."),
+		},
+		handler: async (backlog, args) => jsonResult(await summarizeDailyActivities(backlog, args)),
 	}),
 ];

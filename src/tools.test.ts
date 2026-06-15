@@ -32,8 +32,8 @@ async function run(name: string, backlog: BacklogClient, args: Record<string, un
 }
 
 describe("tools registry", () => {
-	it("registers the 14 Phase 1 tools", () => {
-		expect(tools).toHaveLength(14);
+	it("registers all 18 tools", () => {
+		expect(tools).toHaveLength(18);
 	});
 
 	it("has the expected tool names", () => {
@@ -53,6 +53,10 @@ describe("tools registry", () => {
 				"getIssueComments",
 				"postIssueComments",
 				"getNotifications",
+				"get_user_activities",
+				"get_issue_with_comments",
+				"generate_daily_report",
+				"summarize_daily_activities",
 			].sort(),
 		);
 	});
