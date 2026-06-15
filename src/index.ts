@@ -2,9 +2,17 @@ import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
 import { Backlog } from "backlog-js";
+import { z } from "zod";
 import { BacklogHandler } from "./backlog-handler";
 import { executeTool, tools } from "./tools";
-import { type Props, refreshUpstreamAuthToken } from "./utils";
+import {
+	ALLOWED_PREF_KEYS,
+	type PrefKey,
+	USER_PREFS_KV_PREFIX,
+	type UserPrefs,
+	type Props,
+	refreshUpstreamAuthToken,
+} from "./utils";
 
 // Refresh the access token this many milliseconds before it actually expires,
 // to avoid races where a token expires mid-request.
@@ -61,6 +69,27 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 		return refreshed.accessToken;
 	}
 
+	private userPrefsKey(): string {
+		return `${USER_PREFS_KV_PREFIX}${this.props!.userId}`;
+	}
+
+	private async getUserPrefs(): Promise<UserPrefs> {
+		const raw = await this.env.OAUTH_KV.get(this.userPrefsKey(), "json");
+		return (raw as UserPrefs) ?? {};
+	}
+
+	private async setUserPref(key: PrefKey, value: number | string): Promise<void> {
+		const prefs = await this.getUserPrefs();
+		(prefs as Record<string, unknown>)[key] = value;
+		await this.env.OAUTH_KV.put(this.userPrefsKey(), JSON.stringify(prefs));
+	}
+
+	private async clearUserPref(key: PrefKey): Promise<void> {
+		const prefs = await this.getUserPrefs();
+		delete prefs[key];
+		await this.env.OAUTH_KV.put(this.userPrefsKey(), JSON.stringify(prefs));
+	}
+
 	private async refreshAccessToken(refreshToken: string): Promise<CachedTokens> {
 		const [tokens, errResponse] = await refreshUpstreamAuthToken({
 			client_id: this.env.BACKLOG_CLIENT_ID,
@@ -82,18 +111,86 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 	}
 
 	async init() {
-		// Register every tool from the registry. Each handler is wrapped so it
-		// runs against a Backlog client backed by a freshly-validated (auto-refreshed)
-		// access token.
+		// Register all tools except getIssues, which needs default project injection.
 		for (const tool of tools) {
+			if (tool.name === "getIssues") continue;
 			this.server.tool(tool.name, tool.description, tool.schema, async (args: unknown) => {
 				const accessToken = await this.getValidAccessToken();
 				const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
-				// executeTool wraps the handler so Backlog API failures come back as
-				// structured `isError` results rather than opaque server errors.
 				return executeTool(tool, backlog, args);
 			});
 		}
+
+		// getIssues: inject defaultProjectId from user preferences when projectId is omitted.
+		const getIssuesTool = tools.find((t) => t.name === "getIssues")!;
+		this.server.tool(
+			getIssuesTool.name,
+			getIssuesTool.description,
+			getIssuesTool.schema,
+			async (args: Record<string, unknown>) => {
+				const resolvedArgs = { ...args };
+				if (!resolvedArgs.projectId) {
+					const prefs = await this.getUserPrefs();
+					if (prefs.defaultProjectId) {
+						resolvedArgs.projectId = [prefs.defaultProjectId];
+					}
+				}
+				const accessToken = await this.getValidAccessToken();
+				const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
+				return executeTool(getIssuesTool, backlog, resolvedArgs);
+			},
+		);
+
+		// Preference tools — registered inline because they access KV via this.env.OAUTH_KV.
+		this.server.tool(
+			"get_preferences",
+			"Get the current user's saved preferences (e.g. defaultProjectId). Preferences persist across sessions.",
+			{},
+			async () => {
+				const prefs = await this.getUserPrefs();
+				return { content: [{ type: "text" as const, text: JSON.stringify(prefs) }] };
+			},
+		);
+
+		this.server.tool(
+			"set_preference",
+			"Save a preference that persists across sessions. Use defaultProjectId to avoid specifying a project on every getIssues call.",
+			{
+				key: z.enum(ALLOWED_PREF_KEYS).describe("Preference key to set."),
+				value: z
+					.string()
+					.describe(
+						"Value to store. For defaultProjectId provide the numeric project ID as a string; for defaultProjectKey provide the project key string.",
+					),
+			},
+			async ({ key, value }: { key: PrefKey; value: string }) => {
+				let coercedValue: number | string = value;
+				if (key === "defaultProjectId") {
+					const parsed = Number(value);
+					if (isNaN(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
+						return {
+							content: [{ type: "text" as const, text: "Error: defaultProjectId must be a positive integer." }],
+							isError: true,
+						};
+					}
+					coercedValue = parsed;
+				}
+				await this.setUserPref(key, coercedValue);
+				return { content: [{ type: "text" as const, text: `Preference "${key}" saved.` }] };
+			},
+		);
+
+		this.server.tool(
+			"clear_preference",
+			"Remove a saved preference for the current user.",
+			{
+				key: z.enum(ALLOWED_PREF_KEYS).describe("Preference key to clear."),
+			},
+			async ({ key }: { key: PrefKey }) => {
+				await this.clearUserPref(key);
+				return { content: [{ type: "text" as const, text: `Preference "${key}" cleared.` }] };
+			},
+		);
 	}
 }
 
