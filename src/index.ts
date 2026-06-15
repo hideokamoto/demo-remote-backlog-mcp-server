@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
 import { Backlog } from "backlog-js";
 import { BacklogHandler } from "./backlog-handler";
+import { executeTool, tools } from "./tools";
 import { type Props, refreshUpstreamAuthToken } from "./utils";
 
 // Refresh the access token this many milliseconds before it actually expires,
@@ -81,24 +82,18 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 	}
 
 	async init() {
-		// Use the upstream Backlog access token to facilitate tools
-		this.server.tool(
-			"getMyself",
-			"Get the authenticated user's own information from Backlog",
-			{},
-			async () => {
+		// Register every tool from the registry. Each handler is wrapped so it
+		// runs against a Backlog client backed by a freshly-validated (auto-refreshed)
+		// access token.
+		for (const tool of tools) {
+			this.server.tool(tool.name, tool.description, tool.schema, async (args: unknown) => {
 				const accessToken = await this.getValidAccessToken();
 				const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
-				return {
-					content: [
-						{
-							text: JSON.stringify(await backlog.getMyself()),
-							type: "text",
-						},
-					],
-				};
-			},
-		);
+				// executeTool wraps the handler so Backlog API failures come back as
+				// structured `isError` results rather than opaque server errors.
+				return executeTool(tool, backlog, args);
+			});
+		}
 	}
 }
 
