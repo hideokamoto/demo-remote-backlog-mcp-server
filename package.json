@@ -9,7 +9,8 @@
     "cf-typegen": "wrangler types",
     "type-check": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "echo 'No tests'"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.8.0",
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@types/node": "^25.9.3",
     "typescript": "6.0.3",
+    "vitest": "^4.1.9",
     "wrangler": "^4.100.0"
   }
 }
