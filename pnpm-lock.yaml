@@ -11,6 +11,9 @@ importers:
       '@cloudflare/workers-oauth-provider':
         specifier: ^0.8.0
         version: 0.8.0
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)
       agents:
         specifier: ^0.16.0
         version: 0.16.0(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/workers-types@4.20260615.1)(ai@6.0.205(zod@4.4.3))(react@19.2.7)(rolldown@1.1.1)(zod@4.4.3)

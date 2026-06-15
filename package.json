@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.8.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "agents": "^0.16.0",
     "backlog-js": "^0.16.0",
     "hono": "^4.12.25",
