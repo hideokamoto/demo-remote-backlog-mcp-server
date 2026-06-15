@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import type { AuthRequest, OAuthHelpers } from "@cloudflare/workers-oauth-provider";
+import { Backlog } from "backlog-js";
 import { Hono } from "hono";
-import { Octokit } from "octokit";
 import { fetchUpstreamAuthToken, getUpstreamAuthorizeUrl, type Props } from "./utils";
 import {
 	addApprovedClient,
@@ -29,7 +29,7 @@ app.get("/authorize", async (c) => {
 		// Skip approval dialog but still create secure state and bind to session
 		const { stateToken } = await createOAuthState(oauthReqInfo, c.env.OAUTH_KV);
 		const { setCookie: sessionBindingCookie } = await bindStateToSession(stateToken);
-		return redirectToGithub(c.req.raw, stateToken, { "Set-Cookie": sessionBindingCookie });
+		return redirectToBacklog(c.req.raw, stateToken, { "Set-Cookie": sessionBindingCookie });
 	}
 
 	// Generate CSRF protection for the approval form
@@ -39,9 +39,9 @@ app.get("/authorize", async (c) => {
 		client: await c.env.OAUTH_PROVIDER.lookupClient(clientId),
 		csrfToken,
 		server: {
-			description: "This is a demo MCP Remote Server using GitHub for authentication.",
-			logo: "https://avatars.githubusercontent.com/u/314135?s=200&v=4",
-			name: "Cloudflare GitHub MCP Server",
+			description: "This is a demo MCP Remote Server using Backlog for authentication.",
+			logo: "https://apps.nulab.com/assets/images/backlog/backlog-logo.png",
+			name: "Backlog MCP Server",
 		},
 		setCookie,
 		state: { oauthReqInfo },
@@ -89,7 +89,7 @@ app.post("/authorize", async (c) => {
 		headers.append("Set-Cookie", approvedClientCookie);
 		headers.append("Set-Cookie", sessionBindingCookie);
 
-		return redirectToGithub(c.req.raw, stateToken, Object.fromEntries(headers));
+		return redirectToBacklog(c.req.raw, stateToken, Object.fromEntries(headers));
 	} catch (error: any) {
 		console.error("POST /authorize error:", error);
 		if (error instanceof OAuthError) {
@@ -100,7 +100,7 @@ app.post("/authorize", async (c) => {
 	}
 });
 
-async function redirectToGithub(
+async function redirectToBacklog(
 	request: Request,
 	stateToken: string,
 	headers: Record<string, string> = {},
@@ -109,11 +109,10 @@ async function redirectToGithub(
 		headers: {
 			...headers,
 			location: getUpstreamAuthorizeUrl({
-				client_id: env.GITHUB_CLIENT_ID,
+				client_id: env.BACKLOG_CLIENT_ID,
 				redirect_uri: new URL("/callback", request.url).href,
-				scope: "read:user",
 				state: stateToken,
-				upstream_url: "https://github.com/login/oauth/authorize",
+				upstream_url: `https://${env.BACKLOG_HOST}/OAuth2AccessRequest.action`,
 			}),
 		},
 		status: 302,
@@ -123,12 +122,12 @@ async function redirectToGithub(
 /**
  * OAuth Callback Endpoint
  *
- * This route handles the callback from GitHub after user authentication.
- * It exchanges the temporary code for an access token, then stores some
- * user metadata & the auth token as part of the 'props' on the token passed
- * down to the client. It ends by redirecting the client back to _its_ callback URL
+ * This route handles the callback from Backlog after user authentication.
+ * It exchanges the temporary code for an access token (and refresh token), then
+ * stores some user metadata & the auth tokens as part of the 'props' on the token
+ * passed down to the client. It ends by redirecting the client back to _its_ callback URL.
  *
- * SECURITY: This endpoint validates that the state parameter from GitHub
+ * SECURITY: This endpoint validates that the state parameter from Backlog
  * matches both:
  * 1. A valid state token in KV (proves it was created by our server)
  * 2. The __Host-CONSENTED_STATE cookie (proves THIS browser consented to it)
@@ -158,35 +157,36 @@ app.get("/callback", async (c) => {
 		return c.text("Invalid OAuth request data", 400);
 	}
 
-	// Exchange the code for an access token
-	const [accessToken, errResponse] = await fetchUpstreamAuthToken({
-		client_id: c.env.GITHUB_CLIENT_ID,
-		client_secret: c.env.GITHUB_CLIENT_SECRET,
+	// Exchange the code for an access token (and refresh token)
+	const [tokens, errResponse] = await fetchUpstreamAuthToken({
+		client_id: c.env.BACKLOG_CLIENT_ID,
+		client_secret: c.env.BACKLOG_CLIENT_SECRET,
 		code: c.req.query("code"),
 		redirect_uri: new URL("/callback", c.req.url).href,
-		upstream_url: "https://github.com/login/oauth/access_token",
+		upstream_url: `https://${c.env.BACKLOG_HOST}/api/v2/oauth2/token`,
 	});
 	if (errResponse) return errResponse;
 
-	// Fetch the user info from GitHub
-	const user = await new Octokit({ auth: accessToken }).rest.users.getAuthenticated();
-	const { login, name, email } = user.data;
+	// Fetch the user info from Backlog
+	const backlog = new Backlog({ accessToken: tokens.accessToken, host: c.env.BACKLOG_HOST });
+	const user = await backlog.getMyself();
 
 	// Return back to the MCP client a new token
 	const { redirectTo } = await c.env.OAUTH_PROVIDER.completeAuthorization({
 		metadata: {
-			label: name,
+			label: user.name,
 		},
 		// This will be available on this.props inside MyMCP
 		props: {
-			accessToken,
-			email,
-			login,
-			name,
+			accessToken: tokens.accessToken,
+			expiresAt: Date.now() + tokens.expiresIn * 1000,
+			name: user.name,
+			refreshToken: tokens.refreshToken,
+			userId: user.id,
 		} as Props,
 		request: oauthReqInfo,
 		scope: oauthReqInfo.scope,
-		userId: login,
+		userId: String(user.id),
 	});
 
 	// Clear the session binding cookie (one-time use) by creating response with headers
@@ -196,9 +196,9 @@ app.get("/callback", async (c) => {
 	}
 
 	return new Response(null, {
-		status: 302,
 		headers,
+		status: 302,
 	});
 });
 
-export { app as GitHubHandler };
+export { app as BacklogHandler };

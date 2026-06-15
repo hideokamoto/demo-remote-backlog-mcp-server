@@ -1,5 +1,5 @@
 {
-  "name": "remote-mcp-github-oauth",
+  "name": "remote-mcp-backlog-oauth",
   "version": "0.0.1",
   "private": true,
   "scripts": {
@@ -12,9 +12,9 @@
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.8.0",
     "agents": "^0.16.0",
+    "backlog-js": "^0.16.0",
     "hono": "^4.12.25",
     "just-pick": "^4.2.0",
-    "octokit": "^5.0.5",
     "zod": "^4.4.3"
   },
   "devDependencies": {
