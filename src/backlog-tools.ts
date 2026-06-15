@@ -4,8 +4,6 @@ import type { ActivityResult } from "./daily-report-generator/index.js";
 // single definition of the Backlog client surface shared by the whole registry.
 import type { BacklogClient } from "./tools.js";
 
-export type { BacklogClient };
-
 /**
  * Resolves a Backlog user id, treating any value `< 1` as "the current user"
  * and looking it up via `getMyself()`.
@@ -72,7 +70,7 @@ export interface DailyParams {
 	userId: number;
 	date: string;
 	templateType?: "markdown" | "text" | "html";
-	language?: string;
+	language?: "ja" | "en";
 }
 
 /**

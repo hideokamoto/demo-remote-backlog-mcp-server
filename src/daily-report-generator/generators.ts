@@ -1,4 +1,5 @@
-import type { BacklogActivity, BacklogChange, ProjectActivitiesMap } from "./types.js";
+import type { BacklogActivity, BacklogChange } from "./types.js";
+import { groupActivitiesByProject } from "./grouping.js";
 
 /**
  * Labels for each activity type.
@@ -324,7 +325,7 @@ export class TemplateReportGenerator implements ReportGenerator {
 		}
 
 		let report = "";
-		const groupedByProject = this.groupByProject(activities);
+		const groupedByProject = groupActivitiesByProject(activities);
 
 		Object.entries(groupedByProject).forEach(([projectKey, projectActivities]) => {
 			report += this.template.formatProjectHeader(projectKey, projectActivities[0].project.name);
@@ -353,17 +354,5 @@ export class TemplateReportGenerator implements ReportGenerator {
 		});
 
 		return this.template.wrapReport(report);
-	}
-
-	private groupByProject(activities: BacklogActivity[]): ProjectActivitiesMap {
-		const groupedByProject: ProjectActivitiesMap = {};
-		activities.forEach((activity) => {
-			const projectKey = activity.project.projectKey;
-			if (!groupedByProject[projectKey]) {
-				groupedByProject[projectKey] = [];
-			}
-			groupedByProject[projectKey].push(activity);
-		});
-		return groupedByProject;
 	}
 }

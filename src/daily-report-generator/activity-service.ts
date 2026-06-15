@@ -3,6 +3,7 @@ import { CommentFilter, MeaningfulChangeFilter, OrFilter } from "./filters.js";
 import type { ActivityFilter } from "./filters.js";
 import { TemplateReportGenerator } from "./generators.js";
 import type { ReportGenerator, ReportGeneratorConfig } from "./generators.js";
+import { groupActivitiesByProject } from "./grouping.js";
 
 /**
  * Minimal slice of the Backlog client this service depends on. Keeping it small
@@ -38,7 +39,9 @@ export interface BacklogActivityServiceConfig {
 export class BacklogActivityService {
 	private filter: ActivityFilter;
 	private reportGenerator: ReportGenerator;
-	private timeZone: string;
+	// Built once and reused: Intl.DateTimeFormat is expensive to construct and we
+	// format every activity's timestamp through it.
+	private dateFormat: Intl.DateTimeFormat;
 
 	constructor(
 		private backlog: ActivitySource,
@@ -47,30 +50,18 @@ export class BacklogActivityService {
 		this.filter = config.filter || new OrFilter([new CommentFilter(), new MeaningfulChangeFilter()]);
 		this.reportGenerator =
 			config.reportGenerator || new TemplateReportGenerator(config.reportConfig || {});
-		this.timeZone = config.timeZone || "Asia/Tokyo";
+		// en-CA renders dates as ISO-style YYYY-MM-DD.
+		this.dateFormat = new Intl.DateTimeFormat("en-CA", {
+			timeZone: config.timeZone || "Asia/Tokyo",
+			year: "numeric",
+			month: "2-digit",
+			day: "2-digit",
+		});
 	}
 
 	/** Formats a Date as YYYY-MM-DD in the configured timezone. */
 	private formatDate(date: Date): string {
-		// en-CA renders dates as ISO-style YYYY-MM-DD.
-		return new Intl.DateTimeFormat("en-CA", {
-			timeZone: this.timeZone,
-			year: "numeric",
-			month: "2-digit",
-			day: "2-digit",
-		}).format(date);
-	}
-
-	setFilter(filter: ActivityFilter): void {
-		this.filter = filter;
-	}
-
-	setReportGenerator(generator: ReportGenerator): void {
-		this.reportGenerator = generator;
-	}
-
-	configureReport(config: ReportGeneratorConfig): void {
-		this.reportGenerator.configure(config);
+		return this.dateFormat.format(date);
 	}
 
 	/**
@@ -87,7 +78,7 @@ export class BacklogActivityService {
 		});
 
 		const meaningfulActivities = dayActivities.filter((activity) => this.filter.filter(activity));
-		const groupedByProject = this.groupByProject(meaningfulActivities);
+		const groupedByProject = groupActivitiesByProject(meaningfulActivities);
 		const report = this.reportGenerator.generate(meaningfulActivities);
 
 		return {
@@ -96,17 +87,5 @@ export class BacklogActivityService {
 			groupedByProject,
 			report,
 		};
-	}
-
-	private groupByProject(activities: BacklogActivity[]): Record<string, BacklogActivity[]> {
-		const groupedByProject: Record<string, BacklogActivity[]> = {};
-		activities.forEach((activity) => {
-			const projectKey = activity.project.projectKey;
-			if (!groupedByProject[projectKey]) {
-				groupedByProject[projectKey] = [];
-			}
-			groupedByProject[projectKey].push(activity);
-		});
-		return groupedByProject;
 	}
 }
