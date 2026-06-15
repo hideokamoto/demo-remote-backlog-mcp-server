@@ -56,6 +56,25 @@ describe("TemplateReportGenerator", () => {
 		expect(report).toContain("<h2>PROJ: My Project</h2>");
 	});
 
+	it("escapes HTML special characters in user-sourced content (no injection)", () => {
+		const malicious = activity({
+			content: {
+				id: 10,
+				key_id: 200,
+				summary: "<script>alert('xss')</script>",
+				description: null,
+				comment: { id: 3, content: "<img src=x onerror=alert(1)>" },
+			},
+		} as Partial<BacklogActivity>);
+
+		const report = new TemplateReportGenerator({ templateType: "html" }).generate([malicious]);
+
+		expect(report).not.toContain("<script>");
+		expect(report).not.toContain("<img src=x");
+		expect(report).toContain("&lt;script&gt;");
+		expect(report).toContain("&lt;img src=x onerror=alert(1)&gt;");
+	});
+
 	it("produces balanced <ul>/</ul> tags in html whether or not changes exist", () => {
 		const withChanges = activity();
 		const noChanges = activity({

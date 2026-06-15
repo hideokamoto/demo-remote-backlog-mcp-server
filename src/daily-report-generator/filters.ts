@@ -22,7 +22,8 @@ export interface ActivityFilter {
  */
 export class CommentFilter implements ActivityFilter {
 	filter(activity: BacklogActivity): boolean {
-		return !!(activity.content.comment && activity.content.comment.content.trim());
+		const content = activity.content.comment?.content;
+		return typeof content === "string" && content.trim().length > 0;
 	}
 }
 

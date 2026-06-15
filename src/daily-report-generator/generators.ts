@@ -2,6 +2,19 @@ import type { BacklogActivity, BacklogChange } from "./types.js";
 import { groupActivitiesByProject } from "./grouping.js";
 
 /**
+ * Escapes HTML special characters so Backlog-sourced content (issue summaries,
+ * comments, user names, change values) can't inject markup into the HTML report.
+ */
+function escapeHtml(text: string): string {
+	return text
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#39;");
+}
+
+/**
  * Labels for each activity type.
  */
 interface ActivityTypeLabels {
@@ -183,15 +196,15 @@ export class HtmlTemplate implements ReportTemplate {
 	}
 
 	formatProjectHeader(projectKey: string, projectName: string): string {
-		return `<h2>${projectKey}: ${projectName}</h2>`;
+		return `<h2>${escapeHtml(projectKey)}: ${escapeHtml(projectName)}</h2>`;
 	}
 
 	formatActivityHeader(prefix: string, summary: string, keyId: number): string {
-		return `<h3>${prefix}: ${summary} (#${keyId})</h3>`;
+		return `<h3>${prefix}: ${escapeHtml(summary)} (#${keyId})</h3>`;
 	}
 
 	formatComment(content: string): string {
-		return `<div class="comment">${content.replace(/\n/g, "<br>")}</div>`;
+		return `<div class="comment">${escapeHtml(content).replace(/\n/g, "<br>")}</div>`;
 	}
 
 	formatChangesHeader(): string {
@@ -199,9 +212,9 @@ export class HtmlTemplate implements ReportTemplate {
 	}
 
 	formatChangeLine(field: string, oldValue: string | null, newValue: string | null): string {
-		const oldText = oldValue || this.resources.noneValue;
-		const newText = newValue || this.resources.noneValue;
-		return `<li>${field}: ${oldText} → ${newText}</li>`;
+		const oldText = oldValue ? escapeHtml(oldValue) : this.resources.noneValue;
+		const newText = newValue ? escapeHtml(newValue) : this.resources.noneValue;
+		return `<li>${escapeHtml(field)}: ${oldText} → ${newText}</li>`;
 	}
 
 	formatChangesFooter(): string {
@@ -209,7 +222,7 @@ export class HtmlTemplate implements ReportTemplate {
 	}
 
 	formatCreationInfo(time: string, username: string): string {
-		return `<div class="meta"><em>${time} ${this.resources.byUser} ${username}</em></div>`;
+		return `<div class="meta"><em>${time} ${this.resources.byUser} ${escapeHtml(username)}</em></div>`;
 	}
 
 	formatSeparator(): string {
@@ -247,7 +260,7 @@ export class DefaultDateFormatter implements DateFormatter {
  */
 export interface ReportGeneratorConfig {
 	/** Language for the labels (default: "ja"). */
-	language?: string;
+	language?: "ja" | "en";
 	/** Output template (default: "markdown"). */
 	templateType?: "markdown" | "text" | "html";
 	/** Custom template override. */
@@ -261,7 +274,6 @@ export interface ReportGeneratorConfig {
  */
 export interface ReportGenerator {
 	generate(activities: BacklogActivity[]): string;
-	configure(config: ReportGeneratorConfig): void;
 }
 
 /**
@@ -276,18 +288,6 @@ export class TemplateReportGenerator implements ReportGenerator {
 		this.resources = resourcesMap[config.language || "ja"] || jaResources;
 		this.dateFormatter = config.dateFormatter || new DefaultDateFormatter();
 		this.template = this.buildTemplate(config);
-	}
-
-	configure(config: ReportGeneratorConfig): void {
-		if (config.language) {
-			this.resources = resourcesMap[config.language] || this.resources;
-		}
-		if (config.dateFormatter) {
-			this.dateFormatter = config.dateFormatter;
-		}
-		if (config.customTemplate || config.templateType) {
-			this.template = this.buildTemplate(config);
-		}
 	}
 
 	private buildTemplate(config: ReportGeneratorConfig): ReportTemplate {

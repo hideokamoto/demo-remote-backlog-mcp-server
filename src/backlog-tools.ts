@@ -1,5 +1,5 @@
 import { BacklogActivityService } from "./daily-report-generator/index.js";
-import type { ActivityResult } from "./daily-report-generator/index.js";
+import type { ActivityResult, ProjectActivitiesMap } from "./daily-report-generator/index.js";
 // Type-only import (erased at runtime, so no import cycle with tools.ts) keeps a
 // single definition of the Backlog client surface shared by the whole registry.
 import type { BacklogClient } from "./tools.js";
@@ -56,11 +56,12 @@ export async function getIssueWithComments(
 		throw new Error("issueId or issueKey is required");
 	}
 	// The issue and its comments are independent reads — fetch them in parallel.
+	// Use `??` so an explicit `count: 0` / `order` is honoured rather than overridden.
 	const [issue, comments] = await Promise.all([
 		backlog.getIssue(issueIdOrKey),
 		backlog.getIssueComments(issueIdOrKey, {
-			order: order || "asc",
-			count: count || 100,
+			order: order ?? "asc",
+			count: count ?? 100,
 		}),
 	]);
 	return { issue, comments };
@@ -75,28 +76,34 @@ export interface DailyParams {
 
 /**
  * Builds a daily activity report (filtered, grouped, rendered) for a user/date.
+ * Returns the rendered `report` plus the activities grouped by project. The flat
+ * activity list is intentionally omitted: it duplicates `groupedByProject` and
+ * would roughly double the serialized payload (and the client's context window).
  */
 export async function generateDailyReport(
 	backlog: BacklogClient,
 	{ userId, date, templateType, language }: DailyParams,
-): Promise<ActivityResult> {
+): Promise<{ date: string; groupedByProject: ProjectActivitiesMap; report: string }> {
 	const resolved = await resolveUserId(backlog, userId);
 	const service = new BacklogActivityService(backlog, {
 		reportConfig: { templateType, language },
 	});
-	return service.getMeaningfulActivities(resolved, date);
+	const { date: reportDate, groupedByProject, report } = await service.getMeaningfulActivities(resolved, date);
+	return { date: reportDate, groupedByProject, report };
 }
 
 /**
- * Returns the filtered/grouped daily activities as structured data, without a
- * pre-rendered report — leaving the summarization to the calling LLM.
+ * Returns the filtered daily activities grouped by project, without a
+ * pre-rendered report — leaving the summarization to the calling LLM. The flat
+ * activity list is omitted because `groupedByProject` already holds every
+ * activity; returning both would duplicate the payload.
  */
 export async function summarizeDailyActivities(
 	backlog: BacklogClient,
 	{ userId, date }: Pick<DailyParams, "userId" | "date">,
-): Promise<Omit<ActivityResult, "report">> {
+): Promise<Pick<ActivityResult, "date" | "groupedByProject">> {
 	const resolved = await resolveUserId(backlog, userId);
 	const service = new BacklogActivityService(backlog);
-	const { report: _report, ...rest } = await service.getMeaningfulActivities(resolved, date);
-	return rest;
+	const { date: reportDate, groupedByProject } = await service.getMeaningfulActivities(resolved, date);
+	return { date: reportDate, groupedByProject };
 }

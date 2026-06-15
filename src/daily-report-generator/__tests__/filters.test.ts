@@ -79,6 +79,14 @@ describe("filters", () => {
 		it("returns false when the comment is whitespace only", () => {
 			expect(filter.filter(createMockActivity({ hasComment: true, commentContent: "   " }))).toBe(false);
 		});
+
+		it("returns false (no throw) when comment content is null", () => {
+			const activity = createMockActivity({ hasComment: true });
+			// Simulate an API edge case where content comes back null.
+			(activity.content.comment as { content: unknown }).content = null;
+			expect(() => filter.filter(activity)).not.toThrow();
+			expect(filter.filter(activity)).toBe(false);
+		});
 	});
 
 	describe("MeaningfulChangeFilter", () => {

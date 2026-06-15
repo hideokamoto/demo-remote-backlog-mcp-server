@@ -151,8 +151,9 @@ describe("summarizeDailyActivities", () => {
 		const result = await summarizeDailyActivities(backlog, { userId: 5, date: "2023-04-01" });
 
 		expect(result.date).toBe("2023-04-01");
-		expect(result.activities).toHaveLength(1);
 		expect(result.groupedByProject.PROJ).toHaveLength(1);
 		expect("report" in result).toBe(false);
+		// The flat activity list is intentionally omitted to avoid duplicating groupedByProject.
+		expect("activities" in result).toBe(false);
 	});
 });
