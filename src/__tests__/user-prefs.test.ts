@@ -1,0 +1,103 @@
+import { describe, expect, it } from "vitest";
+import { clearUserPref, getUserPrefs, setUserPref, userPrefsKey } from "../user-prefs";
+import { USER_PREFS_KV_PREFIX } from "../utils";
+
+/** Minimal in-memory mock for KVNamespace. */
+function mockKV() {
+	const store = new Map<string, string>();
+	return {
+		async get(key: string, type?: unknown) {
+			const val = store.get(key) ?? null;
+			if (val === null) return null;
+			if (type === "json") return JSON.parse(val) as unknown;
+			return val;
+		},
+		async put(key: string, value: string) {
+			store.set(key, value);
+		},
+		async delete(key: string) {
+			store.delete(key);
+		},
+		_store: store,
+	} as unknown as KVNamespace & { _store: Map<string, string> };
+}
+
+describe("userPrefsKey", () => {
+	it("returns the correct KV key for a given userId", () => {
+		expect(userPrefsKey(42)).toBe(`${USER_PREFS_KV_PREFIX}42`);
+	});
+});
+
+describe("getUserPrefs", () => {
+	it("returns an empty object when no prefs are stored", async () => {
+		const kv = mockKV();
+		expect(await getUserPrefs(kv, 1)).toEqual({});
+	});
+
+	it("returns stored prefs", async () => {
+		const kv = mockKV();
+		kv._store.set(userPrefsKey(1), JSON.stringify({ defaultProjectId: 99 }));
+		expect(await getUserPrefs(kv, 1)).toEqual({ defaultProjectId: 99 });
+	});
+
+	it("is isolated per userId", async () => {
+		const kv = mockKV();
+		kv._store.set(userPrefsKey(1), JSON.stringify({ defaultProjectId: 10 }));
+		kv._store.set(userPrefsKey(2), JSON.stringify({ defaultProjectId: 20 }));
+		expect(await getUserPrefs(kv, 1)).toEqual({ defaultProjectId: 10 });
+		expect(await getUserPrefs(kv, 2)).toEqual({ defaultProjectId: 20 });
+	});
+});
+
+describe("setUserPref", () => {
+	it("stores a numeric preference", async () => {
+		const kv = mockKV();
+		await setUserPref(kv, 1, "defaultProjectId", 745522);
+		expect(await getUserPrefs(kv, 1)).toEqual({ defaultProjectId: 745522 });
+	});
+
+	it("overwrites an existing preference", async () => {
+		const kv = mockKV();
+		await setUserPref(kv, 1, "defaultProjectId", 100);
+		await setUserPref(kv, 1, "defaultProjectId", 200);
+		expect(await getUserPrefs(kv, 1)).toEqual({ defaultProjectId: 200 });
+	});
+
+	it("does not affect other users", async () => {
+		const kv = mockKV();
+		await setUserPref(kv, 1, "defaultProjectId", 100);
+		expect(await getUserPrefs(kv, 2)).toEqual({});
+	});
+});
+
+describe("clearUserPref", () => {
+	it("removes a preference", async () => {
+		const kv = mockKV();
+		await setUserPref(kv, 1, "defaultProjectId", 99);
+		await clearUserPref(kv, 1, "defaultProjectId");
+		expect(await getUserPrefs(kv, 1)).toEqual({});
+	});
+
+	it("deletes the KV key entirely when no prefs remain", async () => {
+		const kv = mockKV();
+		await setUserPref(kv, 1, "defaultProjectId", 99);
+		await clearUserPref(kv, 1, "defaultProjectId");
+		expect(kv._store.has(userPrefsKey(1))).toBe(false);
+	});
+
+	it("is a no-op when the preference does not exist", async () => {
+		const kv = mockKV();
+		await expect(clearUserPref(kv, 1, "defaultProjectId")).resolves.toBeUndefined();
+	});
+
+	it("does not remove other preferences when clearing one", async () => {
+		const kv = mockKV();
+		// Manually seed two prefs (even though only defaultProjectId is currently allowed,
+		// the pure function should handle multi-key objects correctly)
+		kv._store.set(userPrefsKey(1), JSON.stringify({ defaultProjectId: 10, extra: "val" }));
+		await clearUserPref(kv, 1, "defaultProjectId");
+		const raw = kv._store.get(userPrefsKey(1));
+		expect(raw).toBeDefined();
+		expect(JSON.parse(raw!)).toEqual({ extra: "val" });
+	});
+});

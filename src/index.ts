@@ -5,14 +5,8 @@ import { Backlog } from "backlog-js";
 import { z } from "zod";
 import { BacklogHandler } from "./backlog-handler";
 import { executeTool, tools } from "./tools";
-import {
-	ALLOWED_PREF_KEYS,
-	type PrefKey,
-	USER_PREFS_KV_PREFIX,
-	type UserPrefs,
-	type Props,
-	refreshUpstreamAuthToken,
-} from "./utils";
+import { clearUserPref, getUserPrefs, setUserPref } from "./user-prefs";
+import { ALLOWED_PREF_KEYS, type PrefKey, type Props, refreshUpstreamAuthToken } from "./utils";
 
 // Refresh the access token this many milliseconds before it actually expires,
 // to avoid races where a token expires mid-request.
@@ -69,25 +63,12 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 		return refreshed.accessToken;
 	}
 
-	private userPrefsKey(): string {
-		return `${USER_PREFS_KV_PREFIX}${this.props!.userId}`;
-	}
-
-	private async getUserPrefs(): Promise<UserPrefs> {
-		const raw = await this.env.OAUTH_KV.get(this.userPrefsKey(), "json");
-		return (raw as UserPrefs) ?? {};
-	}
-
-	private async setUserPref(key: PrefKey, value: number | string): Promise<void> {
-		const prefs = await this.getUserPrefs();
-		(prefs as Record<string, unknown>)[key] = value;
-		await this.env.OAUTH_KV.put(this.userPrefsKey(), JSON.stringify(prefs));
-	}
-
-	private async clearUserPref(key: PrefKey): Promise<void> {
-		const prefs = await this.getUserPrefs();
-		delete prefs[key];
-		await this.env.OAUTH_KV.put(this.userPrefsKey(), JSON.stringify(prefs));
+	// Throws a descriptive error if the session is not authenticated.
+	private requireUserId(): number {
+		if (!this.props?.userId) {
+			throw new Error("User session is not authenticated or userId is missing");
+		}
+		return this.props.userId;
 	}
 
 	private async refreshAccessToken(refreshToken: string): Promise<CachedTokens> {
@@ -130,9 +111,13 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			async (args: Record<string, unknown>) => {
 				const resolvedArgs = { ...args };
 				if (!resolvedArgs.projectId) {
-					const prefs = await this.getUserPrefs();
-					if (prefs.defaultProjectId) {
-						resolvedArgs.projectId = [prefs.defaultProjectId];
+					try {
+						const prefs = await getUserPrefs(this.env.OAUTH_KV, this.requireUserId());
+						if (prefs.defaultProjectId) {
+							resolvedArgs.projectId = [prefs.defaultProjectId];
+						}
+					} catch {
+						// Proceed without defaults if prefs are unavailable
 					}
 				}
 				const accessToken = await this.getValidAccessToken();
@@ -141,42 +126,51 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			},
 		);
 
-		// Preference tools — registered inline because they access KV via this.env.OAUTH_KV.
+		// Preference tools — registered inline because they need KV access via this.env.OAUTH_KV.
 		this.server.tool(
 			"get_preferences",
 			"Get the current user's saved preferences (e.g. defaultProjectId). Preferences persist across sessions.",
 			{},
 			async () => {
-				const prefs = await this.getUserPrefs();
-				return { content: [{ type: "text" as const, text: JSON.stringify(prefs) }] };
+				try {
+					const prefs = await getUserPrefs(this.env.OAUTH_KV, this.requireUserId());
+					return { content: [{ type: "text" as const, text: JSON.stringify(prefs) }] };
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					return { content: [{ type: "text" as const, text: `Error: ${message}` }], isError: true };
+				}
 			},
 		);
 
 		this.server.tool(
 			"set_preference",
-			"Save a preference that persists across sessions. Use defaultProjectId to avoid specifying a project on every getIssues call.",
+			"Save a preference that persists across sessions. Use defaultProjectId (numeric project ID) to avoid specifying a project on every getIssues call.",
 			{
 				key: z.enum(ALLOWED_PREF_KEYS).describe("Preference key to set."),
-				value: z
-					.string()
-					.describe(
-						"Value to store. For defaultProjectId provide the numeric project ID as a string; for defaultProjectKey provide the project key string.",
-					),
+				value: z.string().describe("Value to store. For defaultProjectId provide the numeric project ID as a string."),
 			},
 			async ({ key, value }: { key: PrefKey; value: string }) => {
-				let coercedValue: number | string = value;
-				if (key === "defaultProjectId") {
-					const parsed = Number(value);
-					if (isNaN(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
-						return {
-							content: [{ type: "text" as const, text: "Error: defaultProjectId must be a positive integer." }],
-							isError: true,
-						};
+				try {
+					let coercedValue: number | string = value;
+					if (key === "defaultProjectId") {
+						const parsed = Number(value);
+						if (isNaN(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
+							return {
+								content: [{ type: "text" as const, text: "Error: defaultProjectId must be a positive integer." }],
+								isError: true,
+							};
+						}
+						coercedValue = parsed;
 					}
-					coercedValue = parsed;
+					await setUserPref(this.env.OAUTH_KV, this.requireUserId(), key, coercedValue);
+					return { content: [{ type: "text" as const, text: `Preference "${key}" saved.` }] };
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error setting preference: ${message}` }],
+						isError: true,
+					};
 				}
-				await this.setUserPref(key, coercedValue);
-				return { content: [{ type: "text" as const, text: `Preference "${key}" saved.` }] };
 			},
 		);
 
@@ -187,8 +181,16 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 				key: z.enum(ALLOWED_PREF_KEYS).describe("Preference key to clear."),
 			},
 			async ({ key }: { key: PrefKey }) => {
-				await this.clearUserPref(key);
-				return { content: [{ type: "text" as const, text: `Preference "${key}" cleared.` }] };
+				try {
+					await clearUserPref(this.env.OAUTH_KV, this.requireUserId(), key);
+					return { content: [{ type: "text" as const, text: `Preference "${key}" cleared.` }] };
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error clearing preference: ${message}` }],
+						isError: true,
+					};
+				}
 			},
 		);
 	}
