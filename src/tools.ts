@@ -351,7 +351,7 @@ export const tools: ToolDef[] = [
 			"Create a new document in a Backlog project. Returns the created document including its ID.",
 		schema: {
 			projectId: z.number().describe("Project ID."),
-			title: z.string().optional().describe("Document title."),
+			title: z.string().describe("Document title."),
 			content: z.string().optional().describe("Document body (Backlog notation supported)."),
 			emoji: z.string().optional().describe("Emoji icon for the document."),
 			parentId: z

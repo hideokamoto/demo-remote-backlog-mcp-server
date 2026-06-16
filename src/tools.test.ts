@@ -277,11 +277,11 @@ describe("document tools", () => {
 		expect(addDocument).toHaveBeenCalledWith({ projectId: 1, title: "New Doc", content: "Hello" });
 	});
 
-	it("addDocument schema requires only projectId; other fields are optional", () => {
+	it("addDocument schema requires projectId and title; other fields are optional", () => {
 		const schema = z.object(getTool("addDocument").schema);
-		const parsed = schema.parse({ projectId: 42 });
+		const parsed = schema.parse({ projectId: 42, title: "My Doc" });
 		expect(parsed.projectId).toBe(42);
-		expect(parsed.title).toBeUndefined();
+		expect(parsed.title).toBe("My Doc");
 		expect(parsed.content).toBeUndefined();
 	});
 
