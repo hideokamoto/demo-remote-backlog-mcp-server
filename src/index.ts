@@ -4,6 +4,7 @@ import { McpAgent } from "agents/mcp";
 import { Backlog } from "backlog-js";
 import { z } from "zod";
 import { BacklogHandler } from "./backlog-handler";
+import { createIssueResourceTemplate, createProjectResourceTemplate } from "./resources";
 import { executeTool, tools } from "./tools";
 import { clearUserPref, getUserPrefs, setUserPref } from "./user-prefs";
 import { ALLOWED_PREF_KEYS, type PrefKey, type Props, refreshUpstreamAuthToken } from "./utils";
@@ -243,6 +244,12 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			},
 		);
 
+		// Helper that resolves a fresh Backlog client using the current valid token.
+		const getBacklog = async (): Promise<Backlog> => {
+			const accessToken = await this.getValidAccessToken();
+			return new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
+		};
+
 		// ── MCP Resources ──────────────────────────────────────────────────────────
 		// Static resource: list all projects accessible to the authenticated user.
 		this.server.registerResource(
@@ -255,8 +262,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			},
 			async (uri) => {
 				try {
-					const accessToken = await this.getValidAccessToken();
-					const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
+					const backlog = await getBacklog();
 					const projects = await backlog.getProjects({});
 					return {
 						contents: [
@@ -274,36 +280,49 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			},
 		);
 
-		// Template resource: fetch a single issue by its key or numeric ID.
-		const issueTemplate = new ResourceTemplate("backlog://issues/{issueKey}", { list: undefined });
-		this.server.registerResource(
-			"backlog-issue",
-			issueTemplate,
-			{
-				title: "Backlog Issue",
-				description: "A single Backlog issue fetched by its key (e.g. DEMO-123) or numeric ID.",
-				mimeType: "application/json",
-			},
-			async (uri, { issueKey }) => {
-				if (!issueKey || typeof issueKey !== "string") {
-					throw new Error("Missing or invalid issueKey parameter");
-				}
+		// ── Resource templates with argument completions ──────────────────────────
+		// `backlog://projects/{projectKey}` — autocompletes projectKey against the
+		// live list of projects the authenticated user can access.
+		this.server.resource(
+			"backlog-project",
+			createProjectResourceTemplate(getBacklog),
+			{ description: "Fetch a Backlog project by its project key." },
+			async (uri, variables) => {
+				const projectKey = String(variables.projectKey ?? "");
 				try {
-					const accessToken = await this.getValidAccessToken();
-					const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
-					const issue = await backlog.getIssue(issueKey);
+					const backlog = await getBacklog();
+					const project = await backlog.getProject(projectKey);
 					return {
-						contents: [
-							{
-								uri: uri.href,
-								mimeType: "application/json",
-								text: JSON.stringify(issue),
-							},
-						],
+						contents: [{ uri: uri.href, text: JSON.stringify(project), mimeType: "application/json" }],
 					};
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
-					throw new Error(`Failed to fetch Backlog issue "${issueKey}": ${message}`);
+					return {
+						contents: [{ uri: uri.href, text: `Error fetching project "${projectKey}": ${message}` }],
+					};
+				}
+			},
+		);
+
+		// `backlog://issues/{issueKey}` — autocompletes issueKey against the 20
+		// most-recently-updated issues the authenticated user can see.
+		this.server.resource(
+			"backlog-issue",
+			createIssueResourceTemplate(getBacklog),
+			{ description: "Fetch a Backlog issue by its issue key (e.g. DEMO-123)." },
+			async (uri, variables) => {
+				const issueKey = String(variables.issueKey ?? "");
+				try {
+					const backlog = await getBacklog();
+					const issue = await backlog.getIssue(issueKey);
+					return {
+						contents: [{ uri: uri.href, text: JSON.stringify(issue), mimeType: "application/json" }],
+					};
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					return {
+						contents: [{ uri: uri.href, text: `Error fetching issue "${issueKey}": ${message}` }],
+					};
 				}
 			},
 		);
@@ -323,8 +342,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 					throw new Error("Missing or invalid documentId parameter");
 				}
 				try {
-					const accessToken = await this.getValidAccessToken();
-					const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
+					const backlog = await getBacklog();
 					const document = await backlog.getDocument(documentId);
 					return {
 						contents: [
