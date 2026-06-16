@@ -254,6 +254,18 @@ describe("document tools", () => {
 		await run("getDocumentTree", backlog, { projectIdOrKey: "JP_STRIPES_CONNECT_2026" });
 		expect(getDocumentTree).toHaveBeenCalledWith("JP_STRIPES_CONNECT_2026");
 	});
+
+	it("getDocumentTree returns an error when projectIdOrKey is omitted", async () => {
+		const result = await executeTool(getTool("getDocumentTree"), fakeBacklog(), {});
+		expect(result.isError).toBe(true);
+		expect(result.content[0].text).toContain("projectIdOrKey is required");
+	});
+
+	it("getDocuments accepts a single numeric projectId and normalises it to an array", () => {
+		const schema = z.object(getTool("getDocuments").schema);
+		const parsed = schema.parse({ projectId: 745522, offset: 0 });
+		expect(parsed.projectId).toEqual([745522]);
+	});
 });
 
 describe("numeric id coercion", () => {

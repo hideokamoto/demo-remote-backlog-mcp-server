@@ -304,10 +304,9 @@ export const tools: ToolDef[] = [
 		description:
 			"List Backlog documents with optional filters. Each result includes a 'plain' field with the full document body, so title listing and body reference can be done in a single API call. Omit projectId to use the defaultProjectId preference.",
 		schema: {
-			projectId: z
-				.array(z.number())
+			projectId: numberOrArray
 				.optional()
-				.describe("Filter by project IDs. Omit to use the defaultProjectId preference."),
+				.describe("Filter by project IDs. A single number is also accepted and normalised to an array. Omit to use the defaultProjectId preference."),
 			keyword: z.string().optional().describe("Filter documents by title keyword."),
 			sort: z.enum(["created", "updated"]).optional().describe('Sort field: "created" or "updated".'),
 			order: order.optional().describe('Sort order: "asc" or "desc" (default desc).'),
@@ -334,7 +333,14 @@ export const tools: ToolDef[] = [
 				.optional()
 				.describe('Project ID or key (e.g. "DEMO"). Omit to use the defaultProjectId preference.'),
 		},
-		handler: async (backlog, { projectIdOrKey }) => jsonResult(await backlog.getDocumentTree(projectIdOrKey as string | number)),
+		handler: async (backlog, { projectIdOrKey }) => {
+			if (!projectIdOrKey) {
+				throw new Error(
+					"projectIdOrKey is required. Provide it directly or set the defaultProjectId preference via set_preference.",
+				);
+			}
+			return jsonResult(await backlog.getDocumentTree(projectIdOrKey));
+		},
 	}),
 
 	// ── Activities & daily reports ──────────────────────────────────────────────
