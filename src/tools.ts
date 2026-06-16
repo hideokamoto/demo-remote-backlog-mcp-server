@@ -29,6 +29,9 @@ export type BacklogClient = Pick<
 	| "postIssueComments"
 	| "getNotifications"
 	| "getUserActivities"
+	| "getDocuments"
+	| "getDocument"
+	| "getDocumentTree"
 >;
 
 /**
@@ -293,6 +296,45 @@ export const tools: ToolDef[] = [
 			order: order.optional().describe("Sort order."),
 		},
 		handler: async (backlog, args) => jsonResult(await backlog.getNotifications(args)),
+	}),
+
+	// ── Documents ──────────────────────────────────────────────────────────────
+	defineTool({
+		name: "getDocuments",
+		description:
+			"List Backlog documents with optional filters. Each result includes a 'plain' field with the full document body, so title listing and body reference can be done in a single API call. Omit projectId to use the defaultProjectId preference.",
+		schema: {
+			projectId: z
+				.array(z.number())
+				.optional()
+				.describe("Filter by project IDs. Omit to use the defaultProjectId preference."),
+			keyword: z.string().optional().describe("Filter documents by title keyword."),
+			sort: z.enum(["created", "updated"]).optional().describe('Sort field: "created" or "updated".'),
+			order: order.optional().describe('Sort order: "asc" or "desc" (default desc).'),
+			offset: z.number().describe("Pagination offset (required by the Backlog API, use 0 to start from the beginning)."),
+			count: z.number().optional().describe("Number of documents to return (1-100, default 20)."),
+		},
+		handler: async (backlog, args) => jsonResult(await backlog.getDocuments(args)),
+	}),
+	defineTool({
+		name: "getDocument",
+		description:
+			"Get a single Backlog document by its ID (UUIDv7 string). Returns the full document including 'plain' body text.",
+		schema: {
+			documentId: z.string().describe("Document ID in UUIDv7 format (e.g. '01234567-89ab-7def-0123-456789abcdef')."),
+		},
+		handler: async (backlog, { documentId }) => jsonResult(await backlog.getDocument(documentId)),
+	}),
+	defineTool({
+		name: "getDocumentTree",
+		description:
+			"Get the document folder/tree structure for a project, showing the parent-child hierarchy. Omit projectIdOrKey to use the defaultProjectId preference.",
+		schema: {
+			projectIdOrKey: idOrKey
+				.optional()
+				.describe('Project ID or key (e.g. "DEMO"). Omit to use the defaultProjectId preference.'),
+		},
+		handler: async (backlog, { projectIdOrKey }) => jsonResult(await backlog.getDocumentTree(projectIdOrKey as string | number)),
 	}),
 
 	// ── Activities & daily reports ──────────────────────────────────────────────
