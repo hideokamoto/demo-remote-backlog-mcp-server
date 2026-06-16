@@ -92,15 +92,28 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 	}
 
 	async init() {
-		// Register all tools except getIssues, which needs default project injection.
+		// Tools that need defaultProjectId injection are registered separately below.
+		const PROJECT_INJECT_TOOLS = new Set(["getIssues", "getDocuments", "getDocumentTree"]);
+
+		// Register all tools except those that need default project injection.
 		for (const tool of tools) {
-			if (tool.name === "getIssues") continue;
+			if (PROJECT_INJECT_TOOLS.has(tool.name)) continue;
 			this.server.tool(tool.name, tool.description, tool.schema, async (args: unknown) => {
 				const accessToken = await this.getValidAccessToken();
 				const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
 				return executeTool(tool, backlog, args);
 			});
 		}
+
+		// Helper to load the default project ID from preferences (returns undefined on failure).
+		const getDefaultProjectId = async (): Promise<number | undefined> => {
+			try {
+				const prefs = await getUserPrefs(this.env.OAUTH_KV, this.requireUserId());
+				return prefs.defaultProjectId;
+			} catch {
+				return undefined;
+			}
+		};
 
 		// getIssues: inject defaultProjectId from user preferences when projectId is omitted.
 		const getIssuesTool = tools.find((t) => t.name === "getIssues")!;
@@ -111,18 +124,54 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			async (args: Record<string, unknown>) => {
 				const resolvedArgs = { ...args };
 				if (!resolvedArgs.projectId) {
-					try {
-						const prefs = await getUserPrefs(this.env.OAUTH_KV, this.requireUserId());
-						if (prefs.defaultProjectId) {
-							resolvedArgs.projectId = [prefs.defaultProjectId];
-						}
-					} catch {
-						// Proceed without defaults if prefs are unavailable
+					const defaultProjectId = await getDefaultProjectId();
+					if (defaultProjectId) {
+						resolvedArgs.projectId = [defaultProjectId];
 					}
 				}
 				const accessToken = await this.getValidAccessToken();
 				const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
 				return executeTool(getIssuesTool, backlog, resolvedArgs);
+			},
+		);
+
+		// getDocuments: inject defaultProjectId when projectId array is omitted.
+		const getDocumentsTool = tools.find((t) => t.name === "getDocuments")!;
+		this.server.tool(
+			getDocumentsTool.name,
+			getDocumentsTool.description,
+			getDocumentsTool.schema,
+			async (args: Record<string, unknown>) => {
+				const resolvedArgs = { ...args };
+				if (!resolvedArgs.projectId) {
+					const defaultProjectId = await getDefaultProjectId();
+					if (defaultProjectId) {
+						resolvedArgs.projectId = [defaultProjectId];
+					}
+				}
+				const accessToken = await this.getValidAccessToken();
+				const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
+				return executeTool(getDocumentsTool, backlog, resolvedArgs);
+			},
+		);
+
+		// getDocumentTree: inject defaultProjectId when projectIdOrKey is omitted.
+		const getDocumentTreeTool = tools.find((t) => t.name === "getDocumentTree")!;
+		this.server.tool(
+			getDocumentTreeTool.name,
+			getDocumentTreeTool.description,
+			getDocumentTreeTool.schema,
+			async (args: Record<string, unknown>) => {
+				const resolvedArgs = { ...args };
+				if (!resolvedArgs.projectIdOrKey) {
+					const defaultProjectId = await getDefaultProjectId();
+					if (defaultProjectId) {
+						resolvedArgs.projectIdOrKey = defaultProjectId;
+					}
+				}
+				const accessToken = await this.getValidAccessToken();
+				const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
+				return executeTool(getDocumentTreeTool, backlog, resolvedArgs);
 			},
 		);
 

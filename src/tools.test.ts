@@ -32,8 +32,8 @@ async function run(name: string, backlog: BacklogClient, args: Record<string, un
 }
 
 describe("tools registry", () => {
-	it("registers all 18 tools", () => {
-		expect(tools).toHaveLength(18);
+	it("registers all 21 tools", () => {
+		expect(tools).toHaveLength(21);
 	});
 
 	it("has the expected tool names", () => {
@@ -57,6 +57,9 @@ describe("tools registry", () => {
 				"get_issue_with_comments",
 				"generate_daily_report",
 				"summarize_daily_activities",
+				"getDocuments",
+				"getDocument",
+				"getDocumentTree",
 			].sort(),
 		);
 	});
@@ -208,6 +211,60 @@ describe("executeTool error handling", () => {
 		const result = await executeTool(getTool("getMyself"), fakeBacklog({ id: 1 }), {});
 		expect(result.isError).toBeUndefined();
 		expect(result.content[0].text).toBe(JSON.stringify({ id: 1 }));
+	});
+});
+
+describe("document tools", () => {
+	it("getDocuments forwards filter params as a single object", async () => {
+		const backlog = fakeBacklog();
+		const getDocuments = vi.fn().mockResolvedValue([]);
+		(backlog as Record<string, unknown>).getDocuments = getDocuments;
+		await run("getDocuments", backlog, { projectId: [745522], keyword: "議事録", offset: 0 });
+		expect(getDocuments).toHaveBeenCalledWith({ projectId: [745522], keyword: "議事録", offset: 0 });
+	});
+
+	it("getDocuments passes offset-only call", async () => {
+		const backlog = fakeBacklog();
+		const getDocuments = vi.fn().mockResolvedValue([]);
+		(backlog as Record<string, unknown>).getDocuments = getDocuments;
+		await run("getDocuments", backlog, { offset: 0 });
+		expect(getDocuments).toHaveBeenCalledWith({ offset: 0 });
+	});
+
+	it("getDocument forwards documentId as a positional string argument", async () => {
+		const backlog = fakeBacklog();
+		const getDocument = vi.fn().mockResolvedValue({ id: "01234567-89ab-7def-0123-456789abcdef", title: "Test" });
+		(backlog as Record<string, unknown>).getDocument = getDocument;
+		await run("getDocument", backlog, { documentId: "01234567-89ab-7def-0123-456789abcdef" });
+		expect(getDocument).toHaveBeenCalledWith("01234567-89ab-7def-0123-456789abcdef");
+	});
+
+	it("getDocumentTree forwards projectIdOrKey as a positional argument", async () => {
+		const backlog = fakeBacklog();
+		const getDocumentTree = vi.fn().mockResolvedValue({ projectId: "745522", activeTree: { id: "root", children: [] } });
+		(backlog as Record<string, unknown>).getDocumentTree = getDocumentTree;
+		await run("getDocumentTree", backlog, { projectIdOrKey: 745522 });
+		expect(getDocumentTree).toHaveBeenCalledWith(745522);
+	});
+
+	it("getDocumentTree accepts a string project key", async () => {
+		const backlog = fakeBacklog();
+		const getDocumentTree = vi.fn().mockResolvedValue({ projectId: "123" });
+		(backlog as Record<string, unknown>).getDocumentTree = getDocumentTree;
+		await run("getDocumentTree", backlog, { projectIdOrKey: "JP_STRIPES_CONNECT_2026" });
+		expect(getDocumentTree).toHaveBeenCalledWith("JP_STRIPES_CONNECT_2026");
+	});
+
+	it("getDocumentTree returns an error when projectIdOrKey is omitted", async () => {
+		const result = await executeTool(getTool("getDocumentTree"), fakeBacklog(), {});
+		expect(result.isError).toBe(true);
+		expect(result.content[0].text).toContain("projectIdOrKey is required");
+	});
+
+	it("getDocuments accepts a single numeric projectId and normalises it to an array", () => {
+		const schema = z.object(getTool("getDocuments").schema);
+		const parsed = schema.parse({ projectId: 745522, offset: 0 });
+		expect(parsed.projectId).toEqual([745522]);
 	});
 });
 
