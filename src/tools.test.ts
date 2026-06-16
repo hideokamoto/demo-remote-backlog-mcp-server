@@ -198,8 +198,7 @@ describe("executeTool error handling", () => {
 		(backlog as Record<string, unknown>).getMyself = vi.fn().mockRejectedValue(new Error("boom"));
 		const result = await executeTool(getTool("getMyself"), backlog, {});
 		expect(result.isError).toBe(true);
-		const block = result.content[0];
-		expect(block.type === "text" ? block.text : "").toContain("boom");
+		expect(result.content[0]).toEqual({ type: "text", text: expect.stringContaining("boom") });
 	});
 
 	it("normalises non-Error throws to a string message", async () => {
@@ -207,15 +206,13 @@ describe("executeTool error handling", () => {
 		(backlog as Record<string, unknown>).getMyself = vi.fn().mockRejectedValue("nope");
 		const result = await executeTool(getTool("getMyself"), backlog, {});
 		expect(result.isError).toBe(true);
-		const block = result.content[0];
-		expect(block.type === "text" ? block.text : "").toContain("nope");
+		expect(result.content[0]).toEqual({ type: "text", text: expect.stringContaining("nope") });
 	});
 
 	it("passes a successful result through unchanged", async () => {
 		const result = await executeTool(getTool("getMyself"), fakeBacklog({ id: 1 }), {});
 		expect(result.isError).toBeUndefined();
-		const block = result.content[0];
-		expect(block.type === "text" ? block.text : "").toBe(JSON.stringify({ id: 1 }));
+		expect(result.content[0]).toEqual({ type: "text", text: JSON.stringify({ id: 1 }) });
 	});
 });
 
@@ -263,8 +260,7 @@ describe("document tools", () => {
 	it("getDocumentTree returns an error when projectIdOrKey is omitted", async () => {
 		const result = await executeTool(getTool("getDocumentTree"), fakeBacklog(), {});
 		expect(result.isError).toBe(true);
-		const block = result.content[0];
-		expect(block.type === "text" ? block.text : "").toContain("projectIdOrKey is required");
+		expect(result.content[0]).toEqual({ type: "text", text: expect.stringContaining("projectIdOrKey is required") });
 	});
 
 	it("getDocuments accepts a single numeric projectId and normalises it to an array", () => {
@@ -322,5 +318,91 @@ describe("numeric id coercion", () => {
 		const schema = z.object(getTool("postIssueComments").schema);
 		const parsed = schema.parse({ issueIdOrKey: "DEMO-1", content: "hi", notifiedUserId: 7 });
 		expect(parsed.notifiedUserId).toEqual([7]);
+	});
+});
+
+describe("resource_link mapping", () => {
+	it("getIssues returns a count text block and resource_link blocks per issue", async () => {
+		const backlog = fakeBacklog();
+		const getIssues = vi.fn().mockResolvedValue([
+			{ id: 101, issueKey: "DEMO-1", summary: "Fix the login bug" },
+			{ id: 102, issueKey: "DEMO-2", summary: "Add dark mode" },
+		]);
+		(backlog as Record<string, unknown>).getIssues = getIssues;
+		const result = await run("getIssues", backlog, {});
+		expect(result.content[0]).toEqual({ type: "text", text: "Found 2 issue(s)." });
+		expect(result.content[1]).toEqual({
+			type: "resource_link",
+			uri: "backlog://issues/DEMO-1",
+			name: "DEMO-1: Fix the login bug",
+			mimeType: "application/json",
+			description: "Issue ID: 101",
+		});
+		expect(result.content[2]).toEqual({
+			type: "resource_link",
+			uri: "backlog://issues/DEMO-2",
+			name: "DEMO-2: Add dark mode",
+			mimeType: "application/json",
+			description: "Issue ID: 102",
+		});
+	});
+
+	it("getProjects returns a count text block and resource_link blocks per project", async () => {
+		const backlog = fakeBacklog();
+		const getProjects = vi.fn().mockResolvedValue([
+			{ id: 1, projectKey: "DEMO", name: "Demo Project" },
+			{ id: 2, projectKey: "TEST", name: "Test Project" },
+		]);
+		(backlog as Record<string, unknown>).getProjects = getProjects;
+		const result = await run("getProjects", backlog, {});
+		expect(result.content[0]).toEqual({ type: "text", text: "Found 2 project(s)." });
+		expect(result.content[1]).toEqual({
+			type: "resource_link",
+			uri: "backlog://projects/DEMO",
+			name: "DEMO: Demo Project",
+			mimeType: "application/json",
+			description: "Project ID: 1",
+		});
+		expect(result.content[2]).toEqual({
+			type: "resource_link",
+			uri: "backlog://projects/TEST",
+			name: "TEST: Test Project",
+			mimeType: "application/json",
+			description: "Project ID: 2",
+		});
+	});
+
+	it("getDocuments returns a count text block and resource_link blocks per document", async () => {
+		const backlog = fakeBacklog();
+		const getDocuments = vi.fn().mockResolvedValue([
+			{ id: "01234567-89ab-7def-0123-456789abcdef", title: "Meeting Notes" },
+			{ id: "fedcba98-7654-7def-3210-fedcba987654", title: "Project Plan" },
+		]);
+		(backlog as Record<string, unknown>).getDocuments = getDocuments;
+		const result = await run("getDocuments", backlog, { offset: 0 });
+		expect(result.content[0]).toEqual({ type: "text", text: "Found 2 document(s)." });
+		expect(result.content[1]).toEqual({
+			type: "resource_link",
+			uri: "backlog://documents/01234567-89ab-7def-0123-456789abcdef",
+			name: "Meeting Notes",
+			mimeType: "application/json",
+			description: "Document ID: 01234567-89ab-7def-0123-456789abcdef",
+		});
+		expect(result.content[2]).toEqual({
+			type: "resource_link",
+			uri: "backlog://documents/fedcba98-7654-7def-3210-fedcba987654",
+			name: "Project Plan",
+			mimeType: "application/json",
+			description: "Document ID: fedcba98-7654-7def-3210-fedcba987654",
+		});
+	});
+
+	it("getIssues returns a single count block when there are no issues", async () => {
+		const backlog = fakeBacklog();
+		const getIssues = vi.fn().mockResolvedValue([]);
+		(backlog as Record<string, unknown>).getIssues = getIssues;
+		const result = await run("getIssues", backlog, {});
+		expect(result.content).toHaveLength(1);
+		expect(result.content[0]).toEqual({ type: "text", text: "Found 0 issue(s)." });
 	});
 });
