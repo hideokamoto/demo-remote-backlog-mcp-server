@@ -1,5 +1,5 @@
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
 import { Backlog } from "backlog-js";
 import { z } from "zod";
@@ -239,6 +239,105 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 						content: [{ type: "text" as const, text: `Error clearing preference: ${message}` }],
 						isError: true,
 					};
+				}
+			},
+		);
+
+		// ── MCP Resources ──────────────────────────────────────────────────────────
+		// Static resource: list all projects accessible to the authenticated user.
+		this.server.registerResource(
+			"backlog-projects",
+			"backlog://projects",
+			{
+				title: "Backlog Projects",
+				description: "All Backlog projects accessible to the authenticated user, returned as a JSON array.",
+				mimeType: "application/json",
+			},
+			async (uri) => {
+				try {
+					const accessToken = await this.getValidAccessToken();
+					const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
+					const projects = await backlog.getProjects({});
+					return {
+						contents: [
+							{
+								uri: uri.href,
+								mimeType: "application/json",
+								text: JSON.stringify(projects),
+							},
+						],
+					};
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					throw new Error(`Failed to fetch Backlog projects: ${message}`);
+				}
+			},
+		);
+
+		// Template resource: fetch a single issue by its key or numeric ID.
+		const issueTemplate = new ResourceTemplate("backlog://issues/{issueKey}", { list: undefined });
+		this.server.registerResource(
+			"backlog-issue",
+			issueTemplate,
+			{
+				title: "Backlog Issue",
+				description: "A single Backlog issue fetched by its key (e.g. DEMO-123) or numeric ID.",
+				mimeType: "application/json",
+			},
+			async (uri, { issueKey }) => {
+				if (!issueKey || typeof issueKey !== "string") {
+					throw new Error("Missing or invalid issueKey parameter");
+				}
+				try {
+					const accessToken = await this.getValidAccessToken();
+					const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
+					const issue = await backlog.getIssue(issueKey);
+					return {
+						contents: [
+							{
+								uri: uri.href,
+								mimeType: "application/json",
+								text: JSON.stringify(issue),
+							},
+						],
+					};
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					throw new Error(`Failed to fetch Backlog issue "${issueKey}": ${message}`);
+				}
+			},
+		);
+
+		// Template resource: fetch a single document by its UUIDv7 ID.
+		const documentTemplate = new ResourceTemplate("backlog://documents/{documentId}", { list: undefined });
+		this.server.registerResource(
+			"backlog-document",
+			documentTemplate,
+			{
+				title: "Backlog Document",
+				description: "A single Backlog document (wiki page) fetched by its UUIDv7 ID.",
+				mimeType: "application/json",
+			},
+			async (uri, { documentId }) => {
+				if (!documentId || typeof documentId !== "string") {
+					throw new Error("Missing or invalid documentId parameter");
+				}
+				try {
+					const accessToken = await this.getValidAccessToken();
+					const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
+					const document = await backlog.getDocument(documentId);
+					return {
+						contents: [
+							{
+								uri: uri.href,
+								mimeType: "application/json",
+								text: JSON.stringify(document),
+							},
+						],
+					};
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					throw new Error(`Failed to fetch Backlog document "${documentId}": ${message}`);
 				}
 			},
 		);
