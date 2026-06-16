@@ -1,5 +1,5 @@
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
 import { Backlog } from "backlog-js";
 import { z } from "zod";
@@ -240,6 +240,84 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 						isError: true,
 					};
 				}
+			},
+		);
+
+		// ── MCP Resources ──────────────────────────────────────────────────────────
+		// Static resource: list all projects accessible to the authenticated user.
+		this.server.registerResource(
+			"backlog-projects",
+			"backlog://projects",
+			{
+				title: "Backlog Projects",
+				description: "All Backlog projects accessible to the authenticated user, returned as a JSON array.",
+				mimeType: "application/json",
+			},
+			async (uri) => {
+				const accessToken = await this.getValidAccessToken();
+				const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
+				const projects = await backlog.getProjects({});
+				return {
+					contents: [
+						{
+							uri: uri.href,
+							mimeType: "application/json",
+							text: JSON.stringify(projects),
+						},
+					],
+				};
+			},
+		);
+
+		// Template resource: fetch a single issue by its key or numeric ID.
+		const issueTemplate = new ResourceTemplate("backlog://issues/{issueKey}", { list: undefined });
+		this.server.registerResource(
+			"backlog-issue",
+			issueTemplate,
+			{
+				title: "Backlog Issue",
+				description: "A single Backlog issue fetched by its key (e.g. DEMO-123) or numeric ID.",
+				mimeType: "application/json",
+			},
+			async (uri, { issueKey }) => {
+				const accessToken = await this.getValidAccessToken();
+				const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
+				const issue = await backlog.getIssue(issueKey as string);
+				return {
+					contents: [
+						{
+							uri: uri.href,
+							mimeType: "application/json",
+							text: JSON.stringify(issue),
+						},
+					],
+				};
+			},
+		);
+
+		// Template resource: fetch a single document by its UUIDv7 ID.
+		const documentTemplate = new ResourceTemplate("backlog://documents/{documentId}", { list: undefined });
+		this.server.registerResource(
+			"backlog-document",
+			documentTemplate,
+			{
+				title: "Backlog Document",
+				description: "A single Backlog document (wiki page) fetched by its UUIDv7 ID.",
+				mimeType: "application/json",
+			},
+			async (uri, { documentId }) => {
+				const accessToken = await this.getValidAccessToken();
+				const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
+				const document = await backlog.getDocument(documentId as string);
+				return {
+					contents: [
+						{
+							uri: uri.href,
+							mimeType: "application/json",
+							text: JSON.stringify(document),
+						},
+					],
+				};
 			},
 		);
 	}
