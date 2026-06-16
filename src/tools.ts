@@ -32,6 +32,8 @@ export type BacklogClient = Pick<
 	| "getDocuments"
 	| "getDocument"
 	| "getDocumentTree"
+	| "addDocument"
+	| "deleteDocument"
 >;
 
 /**
@@ -341,6 +343,37 @@ export const tools: ToolDef[] = [
 			}
 			return jsonResult(await backlog.getDocumentTree(projectIdOrKey));
 		},
+	}),
+
+	defineTool({
+		name: "addDocument",
+		description:
+			"Create a new document in a Backlog project. Returns the created document including its ID.",
+		schema: {
+			projectId: z.number().describe("Project ID."),
+			title: z.string().describe("Document title."),
+			content: z.string().optional().describe("Document body (Backlog notation supported)."),
+			emoji: z.string().optional().describe("Emoji icon for the document."),
+			parentId: z
+				.string()
+				.optional()
+				.describe("Parent document ID (UUIDv7) to create a child document."),
+			addLast: z
+				.boolean()
+				.optional()
+				.describe("Place this document last among siblings (default true)."),
+		},
+		handler: async (backlog, args) => jsonResult(await backlog.addDocument(args)),
+	}),
+	defineTool({
+		name: "deleteDocument",
+		description: "Delete a Backlog document by its ID. Returns the deleted document.",
+		schema: {
+			documentId: z
+				.string()
+				.describe("Document ID in UUIDv7 format (e.g. '01234567-89ab-7def-0123-456789abcdef')."),
+		},
+		handler: async (backlog, { documentId }) => jsonResult(await backlog.deleteDocument(documentId)),
 	}),
 
 	// ── Activities & daily reports ──────────────────────────────────────────────

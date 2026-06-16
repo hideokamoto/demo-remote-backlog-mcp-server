@@ -32,8 +32,8 @@ async function run(name: string, backlog: BacklogClient, args: Record<string, un
 }
 
 describe("tools registry", () => {
-	it("registers all 21 tools", () => {
-		expect(tools).toHaveLength(21);
+	it("registers all 23 tools", () => {
+		expect(tools).toHaveLength(23);
 	});
 
 	it("has the expected tool names", () => {
@@ -60,6 +60,8 @@ describe("tools registry", () => {
 				"getDocuments",
 				"getDocument",
 				"getDocumentTree",
+				"addDocument",
+				"deleteDocument",
 			].sort(),
 		);
 	});
@@ -265,6 +267,30 @@ describe("document tools", () => {
 		const schema = z.object(getTool("getDocuments").schema);
 		const parsed = schema.parse({ projectId: 745522, offset: 0 });
 		expect(parsed.projectId).toEqual([745522]);
+	});
+
+	it("addDocument calls backlog.addDocument with the given params", async () => {
+		const backlog = fakeBacklog();
+		const addDocument = vi.fn().mockResolvedValue({ id: "01234567-89ab-7def-0123-456789abcdef" });
+		(backlog as Record<string, unknown>).addDocument = addDocument;
+		await run("addDocument", backlog, { projectId: 1, title: "New Doc", content: "Hello" });
+		expect(addDocument).toHaveBeenCalledWith({ projectId: 1, title: "New Doc", content: "Hello" });
+	});
+
+	it("addDocument schema requires projectId and title; other fields are optional", () => {
+		const schema = z.object(getTool("addDocument").schema);
+		const parsed = schema.parse({ projectId: 42, title: "My Doc" });
+		expect(parsed.projectId).toBe(42);
+		expect(parsed.title).toBe("My Doc");
+		expect(parsed.content).toBeUndefined();
+	});
+
+	it("deleteDocument calls backlog.deleteDocument with the documentId", async () => {
+		const backlog = fakeBacklog();
+		const deleteDocument = vi.fn().mockResolvedValue({ id: "01234567-89ab-7def-0123-456789abcdef" });
+		(backlog as Record<string, unknown>).deleteDocument = deleteDocument;
+		await run("deleteDocument", backlog, { documentId: "01234567-89ab-7def-0123-456789abcdef" });
+		expect(deleteDocument).toHaveBeenCalledWith("01234567-89ab-7def-0123-456789abcdef");
 	});
 });
 
