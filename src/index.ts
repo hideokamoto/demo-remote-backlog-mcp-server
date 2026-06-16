@@ -254,18 +254,23 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 				mimeType: "application/json",
 			},
 			async (uri) => {
-				const accessToken = await this.getValidAccessToken();
-				const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
-				const projects = await backlog.getProjects({});
-				return {
-					contents: [
-						{
-							uri: uri.href,
-							mimeType: "application/json",
-							text: JSON.stringify(projects),
-						},
-					],
-				};
+				try {
+					const accessToken = await this.getValidAccessToken();
+					const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
+					const projects = await backlog.getProjects({});
+					return {
+						contents: [
+							{
+								uri: uri.href,
+								mimeType: "application/json",
+								text: JSON.stringify(projects),
+							},
+						],
+					};
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					throw new Error(`Failed to fetch Backlog projects: ${message}`);
+				}
 			},
 		);
 
@@ -280,18 +285,26 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 				mimeType: "application/json",
 			},
 			async (uri, { issueKey }) => {
-				const accessToken = await this.getValidAccessToken();
-				const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
-				const issue = await backlog.getIssue(issueKey as string);
-				return {
-					contents: [
-						{
-							uri: uri.href,
-							mimeType: "application/json",
-							text: JSON.stringify(issue),
-						},
-					],
-				};
+				if (!issueKey || typeof issueKey !== "string") {
+					throw new Error("Missing or invalid issueKey parameter");
+				}
+				try {
+					const accessToken = await this.getValidAccessToken();
+					const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
+					const issue = await backlog.getIssue(issueKey);
+					return {
+						contents: [
+							{
+								uri: uri.href,
+								mimeType: "application/json",
+								text: JSON.stringify(issue),
+							},
+						],
+					};
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					throw new Error(`Failed to fetch Backlog issue "${issueKey}": ${message}`);
+				}
 			},
 		);
 
@@ -306,18 +319,26 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 				mimeType: "application/json",
 			},
 			async (uri, { documentId }) => {
-				const accessToken = await this.getValidAccessToken();
-				const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
-				const document = await backlog.getDocument(documentId as string);
-				return {
-					contents: [
-						{
-							uri: uri.href,
-							mimeType: "application/json",
-							text: JSON.stringify(document),
-						},
-					],
-				};
+				if (!documentId || typeof documentId !== "string") {
+					throw new Error("Missing or invalid documentId parameter");
+				}
+				try {
+					const accessToken = await this.getValidAccessToken();
+					const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
+					const document = await backlog.getDocument(documentId);
+					return {
+						contents: [
+							{
+								uri: uri.href,
+								mimeType: "application/json",
+								text: JSON.stringify(document),
+							},
+						],
+					};
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					throw new Error(`Failed to fetch Backlog document "${documentId}": ${message}`);
+				}
 			},
 		);
 	}
