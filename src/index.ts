@@ -341,6 +341,134 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 				}
 			},
 		);
+
+		// ── Prompts ───────────────────────────────────────────────────────────────
+
+		/**
+		 * daily-report prompt — instructs the model to build a formatted daily
+		 * activity report from Backlog data for a given date.
+		 */
+		this.server.registerPrompt(
+			"daily-report",
+			{
+				title: "Daily Activity Report",
+				description:
+					"Generate a daily activity report from Backlog for a given date. " +
+					"Uses the generate_daily_report tool to fetch activities and renders them in a readable format.",
+				argsSchema: {
+					date: z
+						.string()
+						.optional()
+						.describe(
+							"Target date in YYYY-MM-DD format. Defaults to today when omitted.",
+						),
+					language: z
+						.enum(["ja", "en"])
+						.optional()
+						.describe("Report language — 'ja' (Japanese) or 'en' (English). Defaults to ja."),
+				},
+			},
+			({ date, language }) => {
+				const targetDate = date ?? new Date().toISOString().slice(0, 10);
+				const lang = language ?? "ja";
+				const text =
+					`Please generate a daily activity report for ${targetDate} using the Backlog MCP server.\n\n` +
+					`Steps:\n` +
+					`1. Call the \`getMyself\` tool to obtain the authenticated user's numeric userId.\n` +
+					`2. Call the \`generate_daily_report\` tool with userId, date="${targetDate}", language="${lang}", and templateType="markdown".\n` +
+					`3. Present the resulting report clearly. If no activities are found, state that there were no recorded activities for the day.\n\n` +
+					`Target date: ${targetDate}\n` +
+					`Language: ${lang}`;
+				return {
+					messages: [{ role: "user" as const, content: { type: "text" as const, text } }],
+				};
+			},
+		);
+
+		/**
+		 * summarize-activities prompt — instructs the model to fetch and summarize
+		 * a Backlog user's recent activities since a given date.
+		 */
+		this.server.registerPrompt(
+			"summarize-activities",
+			{
+				title: "Summarize User Activities",
+				description:
+					"Summarize a Backlog user's recent activities. " +
+					"Fetches structured activity data and asks the model to produce a concise summary.",
+				argsSchema: {
+					userId: z
+						.string()
+						.optional()
+						.describe(
+							"Backlog user ID as a string. Omit or pass '0' to use the authenticated user.",
+						),
+					since: z
+						.string()
+						.optional()
+						.describe(
+							"Start date for the summary window in YYYY-MM-DD format. Defaults to yesterday.",
+						),
+				},
+			},
+			({ userId, since }) => {
+				const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+				const sinceDate = since ?? yesterday;
+				const userIdNote =
+					userId && userId !== "0"
+						? `for user with ID ${userId}`
+						: "for the authenticated user (pass userId < 1 to the tool)";
+				const text =
+					`Please summarize the Backlog activities ${userIdNote} since ${sinceDate}.\n\n` +
+					`Steps:\n` +
+					`1. If no userId was provided, call \`getMyself\` to obtain the authenticated user's numeric userId.\n` +
+					`2. Call \`summarize_daily_activities\` with the resolved userId and date="${sinceDate}" to retrieve structured activity data.\n` +
+					`3. Produce a concise, readable summary grouped by project. Highlight key accomplishments, comments added, and issues updated.\n` +
+					`4. If there are no activities, clearly indicate that.\n\n` +
+					`Since: ${sinceDate}`;
+				return {
+					messages: [{ role: "user" as const, content: { type: "text" as const, text } }],
+				};
+			},
+		);
+
+		/**
+		 * issue-triage prompt — instructs the model to triage open issues in a
+		 * Backlog project and suggest priorities or next steps.
+		 */
+		this.server.registerPrompt(
+			"issue-triage",
+			{
+				title: "Issue Triage",
+				description:
+					"Triage open issues in a Backlog project. " +
+					"Fetches the current open issues and asks the model to suggest priorities and next steps.",
+				argsSchema: {
+					projectKey: z
+						.string()
+						.describe(
+							"Backlog project key (e.g. 'DEMO'). Used to scope the issue list to a single project.",
+						),
+				},
+			},
+			({ projectKey }) => {
+				const text =
+					`Please triage the open issues in Backlog project "${projectKey}".\n\n` +
+					`Steps:\n` +
+					`1. Call \`getProjects\` to resolve the numeric projectId for key "${projectKey}".\n` +
+					`2. Call \`getIssues\` with that projectId, filtering to open/unresolved statuses (use \`getProjectStatuses\` to find the open status IDs), and sort by priority descending.\n` +
+					`3. For each issue, evaluate urgency based on due date, priority, and description.\n` +
+					`4. Produce a triage report with:\n` +
+					`   - **Critical / High** issues that need immediate attention\n` +
+					`   - **Medium** issues that should be scheduled soon\n` +
+					`   - **Low / Backlog** items that can be deferred\n` +
+					`5. For each critical/high issue, suggest a recommended next step or assignee.\n\n` +
+					`Project key: ${projectKey}`;
+				return {
+					messages: [{ role: "user" as const, content: { type: "text" as const, text } }],
+				};
+			},
+		);
 	}
 }
 
