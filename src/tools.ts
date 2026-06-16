@@ -36,13 +36,22 @@ export type BacklogClient = Pick<
 	| "deleteDocument"
 >;
 
+/** A single `resource_link` content block as defined by the MCP spec. */
+export interface ResourceLinkBlock {
+	type: "resource_link";
+	uri: string;
+	name: string;
+	mimeType?: string;
+	description?: string;
+}
+
 /**
- * The MCP tool result shape (a single JSON text block, matching the existing
- * convention). The index signature keeps it assignable to the SDK's
+ * The MCP tool result shape. Content blocks may be plain text or resource_link
+ * references. The index signature keeps it assignable to the SDK's
  * `CallToolResult`, which carries optional `_meta`/`isError` fields.
  */
 export interface ToolResult {
-	content: Array<{ type: "text"; text: string }>;
+	content: Array<{ type: "text"; text: string } | ResourceLinkBlock>;
 	[key: string]: unknown;
 }
 
@@ -69,6 +78,23 @@ function defineTool<S extends z.ZodRawShape>(def: {
 /** Serialise any Backlog API response as the single JSON text block MCP clients expect. */
 function jsonResult(data: unknown): ToolResult {
 	return { content: [{ type: "text", text: JSON.stringify(data) }] };
+}
+
+/**
+ * Build a ToolResult whose content is a summary text block followed by one
+ * `resource_link` block per item. Used by list tools to avoid dumping large
+ * JSON arrays into the LLM context.
+ */
+function resourceLinksResult(
+	summary: string,
+	links: ResourceLinkBlock[],
+): ToolResult {
+	return {
+		content: [
+			{ type: "text", text: summary },
+			...links,
+		],
+	};
 }
 
 /**
@@ -144,7 +170,17 @@ export const tools: ToolDef[] = [
 			archived: z.boolean().optional().describe("Filter by archived state; omit to include both."),
 			all: z.boolean().optional().describe("Admins only: include every project in the space."),
 		},
-		handler: async (backlog, args) => jsonResult(await backlog.getProjects(args)),
+		handler: async (backlog, args) => {
+			const projects = await backlog.getProjects(args);
+			const links: ResourceLinkBlock[] = projects.map((p: { projectKey: string; name: string; id: number }) => ({
+				type: "resource_link" as const,
+				uri: `backlog://projects/${p.projectKey}`,
+				name: `${p.projectKey}: ${p.name}`,
+				mimeType: "application/json",
+				description: `Project ID: ${p.id}`,
+			}));
+			return resourceLinksResult(`Found ${links.length} project(s).`, links);
+		},
 	}),
 	defineTool({
 		name: "getProjectUsers",
@@ -206,7 +242,17 @@ export const tools: ToolDef[] = [
 			offset: z.number().optional().describe("Pagination offset."),
 			count: z.number().optional().describe("Number of issues to return (1-100, default 20)."),
 		},
-		handler: async (backlog, args) => jsonResult(await backlog.getIssues(args)),
+		handler: async (backlog, args) => {
+			const issues = await backlog.getIssues(args);
+			const links: ResourceLinkBlock[] = issues.map((issue: { issueKey: string; summary: string; id: number }) => ({
+				type: "resource_link" as const,
+				uri: `backlog://issues/${issue.issueKey}`,
+				name: `${issue.issueKey}: ${issue.summary}`,
+				mimeType: "application/json",
+				description: `Issue ID: ${issue.id}`,
+			}));
+			return resourceLinksResult(`Found ${links.length} issue(s).`, links);
+		},
 	}),
 	defineTool({
 		name: "getIssue",
@@ -315,7 +361,17 @@ export const tools: ToolDef[] = [
 			offset: z.number().describe("Pagination offset (required by the Backlog API, use 0 to start from the beginning)."),
 			count: z.number().optional().describe("Number of documents to return (1-100, default 20)."),
 		},
-		handler: async (backlog, args) => jsonResult(await backlog.getDocuments(args)),
+		handler: async (backlog, args) => {
+			const documents = await backlog.getDocuments(args);
+			const links: ResourceLinkBlock[] = documents.map((doc: { id: string; title: string }) => ({
+				type: "resource_link" as const,
+				uri: `backlog://documents/${doc.id}`,
+				name: doc.title,
+				mimeType: "application/json",
+				description: `Document ID: ${doc.id}`,
+			}));
+			return resourceLinksResult(`Found ${links.length} document(s).`, links);
+		},
 	}),
 	defineTool({
 		name: "getDocument",

@@ -198,7 +198,8 @@ describe("executeTool error handling", () => {
 		(backlog as Record<string, unknown>).getMyself = vi.fn().mockRejectedValue(new Error("boom"));
 		const result = await executeTool(getTool("getMyself"), backlog, {});
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toContain("boom");
+		const block = result.content[0];
+		expect(block.type === "text" ? block.text : "").toContain("boom");
 	});
 
 	it("normalises non-Error throws to a string message", async () => {
@@ -206,13 +207,15 @@ describe("executeTool error handling", () => {
 		(backlog as Record<string, unknown>).getMyself = vi.fn().mockRejectedValue("nope");
 		const result = await executeTool(getTool("getMyself"), backlog, {});
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toContain("nope");
+		const block = result.content[0];
+		expect(block.type === "text" ? block.text : "").toContain("nope");
 	});
 
 	it("passes a successful result through unchanged", async () => {
 		const result = await executeTool(getTool("getMyself"), fakeBacklog({ id: 1 }), {});
 		expect(result.isError).toBeUndefined();
-		expect(result.content[0].text).toBe(JSON.stringify({ id: 1 }));
+		const block = result.content[0];
+		expect(block.type === "text" ? block.text : "").toBe(JSON.stringify({ id: 1 }));
 	});
 });
 
@@ -260,7 +263,8 @@ describe("document tools", () => {
 	it("getDocumentTree returns an error when projectIdOrKey is omitted", async () => {
 		const result = await executeTool(getTool("getDocumentTree"), fakeBacklog(), {});
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toContain("projectIdOrKey is required");
+		const block = result.content[0];
+		expect(block.type === "text" ? block.text : "").toContain("projectIdOrKey is required");
 	});
 
 	it("getDocuments accepts a single numeric projectId and normalises it to an array", () => {
