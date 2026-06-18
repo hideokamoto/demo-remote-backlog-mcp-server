@@ -50,7 +50,7 @@ ungrouped "other tools" bucket and cannot be governed by category.
 ### Where annotations live
 
 - Registry tools: defined in `src/tools.ts` via `defineTool({ ..., annotations })`.
-  `ToolDef` carries an optional `annotations: ToolAnnotations` field.
+  `ToolDef` carries a required `annotations: ToolAnnotations` field.
 - Registration in `src/index.ts` passes them through the 4th argument of the
   SDK's `this.server.tool(name, description, schema, annotations, cb)` overload —
   both the generic loop and the inline `getIssues`/`getDocuments`/`getDocumentTree`

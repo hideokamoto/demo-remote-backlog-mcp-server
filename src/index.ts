@@ -99,7 +99,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 		// Register all tools except those that need default project injection.
 		for (const tool of tools) {
 			if (PROJECT_INJECT_TOOLS.has(tool.name)) continue;
-			this.server.tool(tool.name, tool.description, tool.schema, tool.annotations ?? {}, async (args: unknown) => {
+			this.server.tool(tool.name, tool.description, tool.schema, tool.annotations, async (args: unknown) => {
 				const accessToken = await this.getValidAccessToken();
 				const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
 				return executeTool(tool, backlog, args);
@@ -122,7 +122,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			getIssuesTool.name,
 			getIssuesTool.description,
 			getIssuesTool.schema,
-			getIssuesTool.annotations ?? {},
+			getIssuesTool.annotations,
 			async (args: Record<string, unknown>) => {
 				const resolvedArgs = { ...args };
 				if (!resolvedArgs.projectId) {
@@ -143,7 +143,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			getDocumentsTool.name,
 			getDocumentsTool.description,
 			getDocumentsTool.schema,
-			getDocumentsTool.annotations ?? {},
+			getDocumentsTool.annotations,
 			async (args: Record<string, unknown>) => {
 				const resolvedArgs = { ...args };
 				if (!resolvedArgs.projectId) {
@@ -164,7 +164,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			getDocumentTreeTool.name,
 			getDocumentTreeTool.description,
 			getDocumentTreeTool.schema,
-			getDocumentTreeTool.annotations ?? {},
+			getDocumentTreeTool.annotations,
 			async (args: Record<string, unknown>) => {
 				const resolvedArgs = { ...args };
 				if (!resolvedArgs.projectIdOrKey) {

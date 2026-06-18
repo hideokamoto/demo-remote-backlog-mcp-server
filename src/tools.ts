@@ -72,7 +72,7 @@ export interface ToolDef {
 	name: string;
 	description: string;
 	schema: z.ZodRawShape;
-	annotations?: ToolAnnotations;
+	annotations: ToolAnnotations;
 	handler: (backlog: BacklogClient, args: any) => Promise<ToolResult>;
 }
 
@@ -84,7 +84,7 @@ function defineTool<S extends z.ZodRawShape>(def: {
 	name: string;
 	description: string;
 	schema: S;
-	annotations?: ToolAnnotations;
+	annotations: ToolAnnotations;
 	handler: (backlog: BacklogClient, args: z.infer<z.ZodObject<S>>) => Promise<ToolResult>;
 }): ToolDef {
 	return def as unknown as ToolDef;
