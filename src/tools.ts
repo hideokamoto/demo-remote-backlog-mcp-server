@@ -55,10 +55,24 @@ export interface ToolResult {
 	[key: string]: unknown;
 }
 
+/**
+ * MCP tool annotations. These are hints that let clients (e.g. Claude's
+ * permission UI) categorise tools into read-only vs write/delete groups.
+ * Mirrors the SDK's `ToolAnnotations` shape.
+ */
+export interface ToolAnnotations {
+	title?: string;
+	readOnlyHint?: boolean;
+	destructiveHint?: boolean;
+	idempotentHint?: boolean;
+	openWorldHint?: boolean;
+}
+
 export interface ToolDef {
 	name: string;
 	description: string;
 	schema: z.ZodRawShape;
+	annotations: ToolAnnotations;
 	handler: (backlog: BacklogClient, args: any) => Promise<ToolResult>;
 }
 
@@ -70,6 +84,7 @@ function defineTool<S extends z.ZodRawShape>(def: {
 	name: string;
 	description: string;
 	schema: S;
+	annotations: ToolAnnotations;
 	handler: (backlog: BacklogClient, args: z.infer<z.ZodObject<S>>) => Promise<ToolResult>;
 }): ToolDef {
 	return def as unknown as ToolDef;
@@ -152,6 +167,7 @@ export const tools: ToolDef[] = [
 		name: "getMyself",
 		description: "Get the authenticated user's own information from Backlog.",
 		schema: {},
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog) => jsonResult(await backlog.getMyself()),
 	}),
 	defineTool({
@@ -159,6 +175,7 @@ export const tools: ToolDef[] = [
 		description:
 			"List all users in the Backlog space. Use this to resolve a person's name to the numeric userId required by assignee and notification parameters.",
 		schema: {},
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog) => jsonResult(await backlog.getUsers()),
 	}),
 
@@ -170,6 +187,7 @@ export const tools: ToolDef[] = [
 			archived: z.boolean().optional().describe("Filter by archived state; omit to include both."),
 			all: z.boolean().optional().describe("Admins only: include every project in the space."),
 		},
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog, args) => {
 			const projects = await backlog.getProjects(args);
 			const links: ResourceLinkBlock[] = projects.map((p: { projectKey: string; name: string; id: number }) => ({
@@ -189,6 +207,7 @@ export const tools: ToolDef[] = [
 		schema: {
 			projectIdOrKey: idOrKey.describe('Project ID or key, e.g. "DEMO".'),
 		},
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog, { projectIdOrKey }) => jsonResult(await backlog.getProjectUsers(projectIdOrKey)),
 	}),
 	defineTool({
@@ -198,6 +217,7 @@ export const tools: ToolDef[] = [
 		schema: {
 			projectIdOrKey: idOrKey.describe('Project ID or key, e.g. "DEMO".'),
 		},
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog, { projectIdOrKey }) => jsonResult(await backlog.getIssueTypes(projectIdOrKey)),
 	}),
 	defineTool({
@@ -207,12 +227,14 @@ export const tools: ToolDef[] = [
 		schema: {
 			projectIdOrKey: idOrKey.describe('Project ID or key, e.g. "DEMO".'),
 		},
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog, { projectIdOrKey }) => jsonResult(await backlog.getProjectStatuses(projectIdOrKey)),
 	}),
 	defineTool({
 		name: "getPriorities",
 		description: "List the space-wide issue priorities (High, Normal, Low) to resolve the priorityId.",
 		schema: {},
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog) => jsonResult(await backlog.getPriorities()),
 	}),
 
@@ -242,6 +264,7 @@ export const tools: ToolDef[] = [
 			offset: z.number().optional().describe("Pagination offset."),
 			count: z.number().optional().describe("Number of issues to return (1-100, default 20)."),
 		},
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog, args) => {
 			const issues = await backlog.getIssues(args);
 			const links: ResourceLinkBlock[] = issues.map((issue: { issueKey: string; summary: string; id: number }) => ({
@@ -260,6 +283,7 @@ export const tools: ToolDef[] = [
 		schema: {
 			issueIdOrKey: idOrKey.describe('Issue key (e.g. "DEMO-123") or numeric ID.'),
 		},
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog, { issueIdOrKey }) => jsonResult(await backlog.getIssue(issueIdOrKey)),
 	}),
 	defineTool({
@@ -282,6 +306,7 @@ export const tools: ToolDef[] = [
 			versionId: numberOrArray.optional().describe("Affected version IDs."),
 			notifiedUserId: numberOrArray.optional().describe("User IDs to notify."),
 		},
+		annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog, args) => jsonResult(await backlog.postIssue(args)),
 	}),
 	defineTool({
@@ -303,6 +328,7 @@ export const tools: ToolDef[] = [
 			comment: z.string().optional().describe("Comment to add alongside the update."),
 			notifiedUserId: numberOrArray.optional().describe("User IDs to notify."),
 		},
+		annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
 		handler: async (backlog, { issueIdOrKey, ...params }) =>
 			jsonResult(await backlog.patchIssue(issueIdOrKey, params)),
 	}),
@@ -318,6 +344,7 @@ export const tools: ToolDef[] = [
 			count: z.number().optional().describe("Number of comments to return (1-100, default 20)."),
 			order: order.optional().describe("Sort order."),
 		},
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog, { issueIdOrKey, ...params }) =>
 			jsonResult(await backlog.getIssueComments(issueIdOrKey, params)),
 	}),
@@ -329,6 +356,7 @@ export const tools: ToolDef[] = [
 			content: z.string().describe("Comment body (Markdown / Backlog notation supported)."),
 			notifiedUserId: numberOrArray.optional().describe("User IDs to notify."),
 		},
+		annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog, { issueIdOrKey, ...params }) =>
 			jsonResult(await backlog.postIssueComments(issueIdOrKey, params)),
 	}),
@@ -343,6 +371,7 @@ export const tools: ToolDef[] = [
 			count: z.number().optional().describe("Number to return (1-100)."),
 			order: order.optional().describe("Sort order."),
 		},
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog, args) => jsonResult(await backlog.getNotifications(args)),
 	}),
 
@@ -361,6 +390,7 @@ export const tools: ToolDef[] = [
 			offset: z.number().describe("Pagination offset (required by the Backlog API, use 0 to start from the beginning)."),
 			count: z.number().optional().describe("Number of documents to return (1-100, default 20)."),
 		},
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog, args) => {
 			const documents = await backlog.getDocuments(args);
 			const links: ResourceLinkBlock[] = documents.map((doc: { id: string; title: string }) => ({
@@ -380,6 +410,7 @@ export const tools: ToolDef[] = [
 		schema: {
 			documentId: z.string().describe("Document ID in UUIDv7 format (e.g. '01234567-89ab-7def-0123-456789abcdef')."),
 		},
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog, { documentId }) => jsonResult(await backlog.getDocument(documentId)),
 	}),
 	defineTool({
@@ -391,6 +422,7 @@ export const tools: ToolDef[] = [
 				.optional()
 				.describe('Project ID or key (e.g. "DEMO"). Omit to use the defaultProjectId preference.'),
 		},
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog, { projectIdOrKey }) => {
 			if (!projectIdOrKey) {
 				throw new Error(
@@ -419,6 +451,7 @@ export const tools: ToolDef[] = [
 				.optional()
 				.describe("Place this document last among siblings (default true)."),
 		},
+		annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog, args) => jsonResult(await backlog.addDocument(args)),
 	}),
 	defineTool({
@@ -429,6 +462,7 @@ export const tools: ToolDef[] = [
 				.string()
 				.describe("Document ID in UUIDv7 format (e.g. '01234567-89ab-7def-0123-456789abcdef')."),
 		},
+		annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
 		handler: async (backlog, { documentId }) => jsonResult(await backlog.deleteDocument(documentId)),
 	}),
 
@@ -445,6 +479,7 @@ export const tools: ToolDef[] = [
 			count: z.number().optional().describe("Number of activities to return (1-100)."),
 			order: order.optional().describe("Sort order."),
 		},
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog, args) => jsonResult(await getUserActivities(backlog, args)),
 	}),
 	defineTool({
@@ -457,6 +492,7 @@ export const tools: ToolDef[] = [
 			count: z.number().optional().describe("Number of comments to retrieve (default 100)."),
 			order: order.optional().describe("Comment sort order (default asc)."),
 		},
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog, args) => jsonResult(await getIssueWithComments(backlog, args)),
 	}),
 	defineTool({
@@ -472,6 +508,7 @@ export const tools: ToolDef[] = [
 				.describe("Report output format (default markdown)."),
 			language: z.enum(["ja", "en"]).optional().describe("Report language (default ja)."),
 		},
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog, args) => jsonResult(await generateDailyReport(backlog, args)),
 	}),
 	defineTool({
@@ -482,6 +519,7 @@ export const tools: ToolDef[] = [
 			userId: z.number().describe("Backlog user ID. Use a value < 1 for the authenticated user."),
 			date: z.string().describe("Target date in YYYY-MM-DD format."),
 		},
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
 		handler: async (backlog, args) => jsonResult(await summarizeDailyActivities(backlog, args)),
 	}),
 ];

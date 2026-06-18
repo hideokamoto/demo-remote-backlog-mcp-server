@@ -99,7 +99,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 		// Register all tools except those that need default project injection.
 		for (const tool of tools) {
 			if (PROJECT_INJECT_TOOLS.has(tool.name)) continue;
-			this.server.tool(tool.name, tool.description, tool.schema, async (args: unknown) => {
+			this.server.tool(tool.name, tool.description, tool.schema, tool.annotations, async (args: unknown) => {
 				const accessToken = await this.getValidAccessToken();
 				const backlog = new Backlog({ accessToken, host: this.env.BACKLOG_HOST });
 				return executeTool(tool, backlog, args);
@@ -122,6 +122,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			getIssuesTool.name,
 			getIssuesTool.description,
 			getIssuesTool.schema,
+			getIssuesTool.annotations,
 			async (args: Record<string, unknown>) => {
 				const resolvedArgs = { ...args };
 				if (!resolvedArgs.projectId) {
@@ -142,6 +143,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			getDocumentsTool.name,
 			getDocumentsTool.description,
 			getDocumentsTool.schema,
+			getDocumentsTool.annotations,
 			async (args: Record<string, unknown>) => {
 				const resolvedArgs = { ...args };
 				if (!resolvedArgs.projectId) {
@@ -162,6 +164,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			getDocumentTreeTool.name,
 			getDocumentTreeTool.description,
 			getDocumentTreeTool.schema,
+			getDocumentTreeTool.annotations,
 			async (args: Record<string, unknown>) => {
 				const resolvedArgs = { ...args };
 				if (!resolvedArgs.projectIdOrKey) {
@@ -181,6 +184,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			"get_preferences",
 			"Get the current user's saved preferences (e.g. defaultProjectId). Preferences persist across sessions.",
 			{},
+			{ readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 			async () => {
 				try {
 					const prefs = await getUserPrefs(this.env.OAUTH_KV, this.requireUserId());
@@ -199,6 +203,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 				key: z.enum(ALLOWED_PREF_KEYS).describe("Preference key to set."),
 				value: z.string().describe("Value to store. For defaultProjectId provide the numeric project ID as a string."),
 			},
+			{ readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 			async ({ key, value }: { key: PrefKey; value: string }) => {
 				try {
 					let coercedValue: number | string = value;
@@ -230,6 +235,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			{
 				key: z.enum(ALLOWED_PREF_KEYS).describe("Preference key to clear."),
 			},
+			{ readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
 			async ({ key }: { key: PrefKey }) => {
 				try {
 					await clearUserPref(this.env.OAUTH_KV, this.requireUserId(), key);
